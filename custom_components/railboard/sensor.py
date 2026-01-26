@@ -1,9 +1,12 @@
 from homeassistant.helpers.entity import Entity
+import logging
 from .api import DarwinClient
 
+_LOGGER = logging.getLogger(__name__)
 darwin = DarwinClient()
 
 def setup_platform(hass, config, add_entities, discovery_info=None):
+    _LOGGER.warning("⚡ Railboard sensor setup_platform called ⚡")
     add_entities([RailboardDeparturesSensor()])
 
 class RailboardDeparturesSensor(Entity):
@@ -17,9 +20,6 @@ class RailboardDeparturesSensor(Entity):
         return self._state
 
     def update(self):
-        # This is called by HA to refresh the sensor
-        departures = darwin.get_departures("KGX")  # example CRS
-        self._state = len(departures)  # number of departures
-        self._attr_extra_state_attributes = {
-            f"{i+1}": dep for i, dep in enumerate(departures)
-        }
+        departures = darwin.get_departures("KGX")
+        self._state = len(departures)
+        self._attr_extra_state_attributes = {f"{i+1}": dep for i, dep in enumerate(departures)}
