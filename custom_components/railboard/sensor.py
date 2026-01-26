@@ -5,17 +5,17 @@ from .api import DarwinClient, TfLClient
 _LOGGER = logging.getLogger(__name__)
 
 # -------------------------------
-# Initialize clients with placeholder keys / IDs
-# Replace with config flow or YAML later
+# Initialize clients with your API key and station codes
 # -------------------------------
-darwin = DarwinClient(token="YOUR_NATIONAL_RAIL_API_KEY")
+darwin = DarwinClient(token="0619b08e-efec-4123-ba4a-e519a0564f86")
 tfl = TfLClient()
 
-# Example: Hackney Central NAptan ID for Overground
-OVERGROUND_NAPTAN_ID = "940GZZLUHYC"
+# National Rail CRS code for Crystal Palace
+NR_CRS_CODE = "CYP"
 
-# National Rail station CRS code example: King's Cross
-NR_CRS_CODE = "KGX"
+# TfL Naptan ID for Crystal Palace (Overground)
+# You can check TfL API for exact Naptan ID; example placeholder:
+OVERGROUND_NAPTAN_ID = "940GZZLUCPL"  # Crystal Palace rail Overground/TfL station
 
 def setup_platform(hass, config, add_entities, discovery_info=None):
     _LOGGER.warning("⚡ Railboard sensor setup_platform called ⚡")
