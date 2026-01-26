@@ -1,2 +1,2 @@
 DOMAIN = "railboard"
-WSDL_URL = "https://lite.realtime.nationalrail.co.uk/OpenLDBWS/wsdl.aspx"
+DARWIN_WSDL = "https://lite.realtime.nationalrail.co.uk/OpenLDBWS/wsdl/ldb3.wsdl"
