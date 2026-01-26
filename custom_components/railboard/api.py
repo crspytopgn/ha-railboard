@@ -1,4 +1,4 @@
-"""Railboard API clients: Python 3.11-safe."""
+"""Railboard API clients: safe for Python 3.11 / HA 2026"""
 
 import logging
 import requests
@@ -6,13 +6,14 @@ import requests
 _LOGGER = logging.getLogger("railboard.api")
 
 
-# -------------------------------
-# National Rail Darwin client
-# -------------------------------
 class DarwinClient:
+    """National Rail Darwin client (lazy-load Zeep to avoid cgi errors)"""
+
+    WSDL = "https://lite.realtime.nationalrail.co.uk/OpenLDBWS/wsdl/ldb3.wsdl"
+
     def __init__(self, token: str):
         self.token = token
-        self.client = None  # Will initialize lazily
+        self.client = None  # will be initialized lazily
 
     def get_departures(self, crs: str, num_rows: int = 5):
         if self.client is None:
@@ -23,10 +24,7 @@ class DarwinClient:
                 session = requests.Session()
                 session.headers.update({"Authorization": f"Token {self.token}"})
                 transport = Transport(session=session)
-                self.client = Client(
-                    wsdl="https://lite.realtime.nationalrail.co.uk/OpenLDBWS/wsdl/ldb3.wsdl",
-                    transport=transport,
-                )
+                self.client = Client(wsdl=self.WSDL, transport=transport)
             except ImportError as e:
                 _LOGGER.error("Zeep import failed: %s", e)
                 return []
@@ -49,10 +47,9 @@ class DarwinClient:
             return []
 
 
-# -------------------------------
-# TfL client for London Overground
-# -------------------------------
 class TfLClient:
+    """TfL London Overground client"""
+
     BASE_URL = "https://api.tfl.gov.uk/StopPoint/{}/Arrivals"
 
     def get_departures(self, naptan_id: str):
