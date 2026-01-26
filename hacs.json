@@ -1,0 +1,5 @@
+{
+  "name": "Railboard",
+  "domains": ["sensor"],
+  "content_in_root": false
+}
