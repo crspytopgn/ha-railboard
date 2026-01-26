@@ -9,7 +9,7 @@ A beautiful, real-time UK train departure and arrival board integration for Home
 ## Features
 
 ✅ Real-time departure and arrival information for **any UK railway station**  
-✅ Support for **National Rail** and **London Overground** services  
+✅ Support for **National Rail** and **Transport for London** services  
 ✅ Accurate delay information and cancellations  
 ✅ Platform numbers and calling points  
 ✅ Colour-coded by train operating company  
