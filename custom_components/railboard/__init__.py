@@ -1,12 +1,13 @@
 """Railboard integration."""
 
-from homeassistant.core import HomeAssistant
+import logging
 from homeassistant.helpers.discovery import load_platform
 from .const import DOMAIN
 
+_LOGGER = logging.getLogger(__name__)
 
-def setup(hass: HomeAssistant, config: dict) -> bool:
+def setup(hass, config):
     """Set up the Railboard integration."""
-    hass.data[DOMAIN] = {}
+    _LOGGER.warning("🔥 RAILBOARD SETUP CALLED 🔥")
     load_platform(hass, "sensor", DOMAIN, {}, config)
     return True
