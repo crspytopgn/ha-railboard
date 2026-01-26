@@ -1,7 +1,7 @@
 {
   "domain": "railboard",
-  "name": "Railboard (National Rail)",
-  "version": "0.2.0",
+  "name": "Railboard (National Rail + Overground)",
+  "version": "0.3.0",
   "documentation": "https://github.com/crspytopgn/ha-railboard",
   "requirements": ["zeep==4.2.1", "requests>=2.30.0"],
   "codeowners": ["@crspytopgn"],
