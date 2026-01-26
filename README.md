@@ -1,60 +1,110 @@
-# Railboard - UK Train Departures for Home Assistant
+# Railboard Card & Integration
 
-A beautiful, real-time UK train departure and arrival board integration for Home Assistant.
+[![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
+[![GitHub release](https://img.shields.io/github/release/crspytopgn/ha-railboard-dashboard.svg)](https://github.com/crspytopgn/ha-railboard-dashboard/releases)
+[![License](https://img.shields.io/github/license/crspytopgn/ha-railboard-dashboard.svg)](LICENSE)
 
-[![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
-[![GitHub release](https://img.shields.io/github/release/crspytopgn/ha-railboard.svg)](https://github.com/crspytopgn/ha-railboard/releases)
-[![License](https://img.shields.io/github/license/crspytopgn/ha-railboard.svg)](LICENSE)
+A beautiful, real-time UK train departure board for Home Assistant, powered by the [Railboard integration](https://github.com/crspytopgn/ha-railboard).
+
+---
 
 ## Features
 
-✅ Real-time departure and arrival information for **any UK railway station**  
-✅ Support for **National Rail** and **Transport for London** services  
-✅ Accurate delay information and cancellations  
-✅ Platform numbers and calling points  
-✅ Colour-coded by train operating company  
-✅ Fully customizable display options  
-✅ Uses Realtime Trains API for reliable data  
+✨ **Beautiful Design** – Modern interface inspired by real UK departure boards  
+🚂 **Real-Time Data** – Shows live departures from your Railboard sensors  
+🎨 **Colour-Coded Operators** – Each train operator displayed in brand colours  
+⚙️ **Fully Customizable** – Configure via visual UI or YAML  
+📱 **Responsive** – Works well on tablets and small screens  
+🌙 **Theme Support** – Automatically adapts to your Home Assistant theme  
+⏱ **Walking Time Filter** – Only shows departures after a user-defined walking time  
+📝 **Platform & Status Display** – Optionally show platforms, delays, cancellations, calling points  
+
+---
+
+## Prerequisites
+
+You must have the **Railboard integration** installed first:
+
+🔗 [Install Railboard Integration](https://github.com/crspytopgn/ha-railboard)
+
+This card displays data from Railboard sensors — it won’t work without them.
+
+You also need a free **Realtime Trains API account**:
+
+1. Go to [Realtime Trains Developer](https://www.realtimetrains.co.uk/about/developer/)
+2. Sign up for a free account
+3. Note your username and password (API key)
+
+---
 
 ## Installation
 
 ### HACS (Recommended)
 
-1. Open **HACS** in Home Assistant
-2. Go to **Integrations**
-3. Click the **three dots** menu (top right)
-4. Select **"Custom repositories"**
-5. Add repository URL: `https://github.com/crspytopgn/ha-railboard`
-6. Category: **Integration**
-7. Click **Add**
-8. Click **+ Explore & Download Repositories**
-9. Search for **"Railboard"**
-10. Click **Download**
-11. **Restart Home Assistant**
+1. Open **HACS** in Home Assistant  
+2. Go to **Frontend**  
+3. Click the **three dots** menu (top right) → **Custom repositories**  
+4. Add repository URL: `https://github.com/crspytopgn/ha-railboard-dashboard`  
+5. Category: **Lovelace** → Click **Add**  
+6. Search for **Railboard Card** → Click **Download**  
+7. **Restart Home Assistant**  
+8. **Hard refresh your browser** (Ctrl+F5 / Cmd+Shift+R)  
 
 ### Manual Installation
 
-1. Download the latest release from [releases](https://github.com/crspytopgn/ha-railboard/releases)
-2. Extract the `custom_components/railboard` folder
-3. Copy it to your Home Assistant `config/custom_components/` directory
-4. Restart Home Assistant
+1. Download `railboard-card.js` from [latest release](https://github.com/crspytopgn/ha-railboard-dashboard/releases)  
+2. Copy to `/config/www/community/railboard-card/railboard-card.js`  
+3. Add resource in **Configuration → Lovelace Dashboards → Resources**:  
+   - URL: `/hacsfiles/railboard-card/railboard-card.js`  
+   - Type: **JavaScript Module**  
+4. **Restart Home Assistant**  
+5. **Hard refresh browser**  
+
+---
 
 ## Configuration
 
-### Prerequisites
-
-You need a **free Realtime Trains API account**:
-
-1. Go to https://www.realtimetrains.co.uk/about/developer/
-2. Sign up for a free account
-3. Note your **username** and **password** (API key)
-
-### Add to configuration.yaml
+### Railboard Integration Example (`configuration.yaml`)
 
 ```yaml
 sensor:
   - platform: railboard
-    api_key: "your_realtime_trains_password"
-    rtt_username: "your_realtime_trains_username"
+    api_key: "YOUR_REALTIME_TRAINS_PASSWORD"
+    rtt_username: "YOUR_REALTIME_TRAINS_USERNAME"
     station_code: "PAD"  # 3-letter CRS code
     station_name: "London Paddington"  # Optional
+Railboard Card Example (Visual Editor)
+Edit your dashboard → + Add Card → Search Railboard Card
+Configure:
+Choose your Railboard sensor
+Optional title
+Toggle display options: platforms, status, calling points, operator badge
+Max departures
+Walking time (minutes)
+Railboard Card YAML Example
+type: custom:railboard-card
+entity: sensor.railboard_departures_crystal_palace
+title: Crystal Palace
+show_platforms: true
+show_status: true
+show_calling_points: true
+show_operator_badge: true
+max_departures: 10
+walking_time: 5  # in minutes, filters departures sooner than this
+Display Options
+Platforms – Shows the departure platform
+Status – Shows ON TIME, +Xm (delay), or CANCELLED
+Calling Points – Shows first 3 calling points and +N if more
+Operator Badge – Displays train operator abbreviation in brand colour
+Walking Time Filter – Excludes departures sooner than configured minutes
+Tips for Small Screens
+Card is responsive but long station names may truncate.
+To improve readability:
+Reduce max departures
+Use shorter titles
+Adjust dashboard card width
+Use smaller text size via custom CSS if needed
+Notes
+Operator colours now don’t indicate on-time status; status background shows timing.
+Supports all UK National Rail stations and many TfL services.
+Works with Home Assistant themes automatically.
