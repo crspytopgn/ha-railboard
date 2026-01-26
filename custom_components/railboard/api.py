@@ -1,34 +1,41 @@
-"""API client for Railboard: National Rail + London Overground."""
+"""Railboard API clients: Python 3.11-safe."""
 
 import logging
-from zeep import Client
-from zeep.transports import Transport
 import requests
 
-_LOGGER = logging.getLogger(__name__)
+_LOGGER = logging.getLogger("railboard.api")
 
-from .const import DARWIN_WSDL
 
 # -------------------------------
-# National Rail (Darwin) Client
+# National Rail Darwin client
 # -------------------------------
 class DarwinClient:
     def __init__(self, token: str):
         self.token = token
-        session = requests.Session()
-        session.headers.update({"Authorization": f"Token {self.token}"})
-        transport = Transport(session=session)
-        self.client = Client(wsdl=DARWIN_WSDL, transport=transport)
+        self.client = None  # Will initialize lazily
 
-    def get_departures(self, crs: str):
-        """Return next departures from Darwin API."""
+    def get_departures(self, crs: str, num_rows: int = 5):
+        if self.client is None:
+            try:
+                from zeep import Client
+                from zeep.transports import Transport
+
+                session = requests.Session()
+                session.headers.update({"Authorization": f"Token {self.token}"})
+                transport = Transport(session=session)
+                self.client = Client(
+                    wsdl="https://lite.realtime.nationalrail.co.uk/OpenLDBWS/wsdl/ldb3.wsdl",
+                    transport=transport,
+                )
+            except ImportError as e:
+                _LOGGER.error("Zeep import failed: %s", e)
+                return []
+
         try:
-            response = self.client.service.GetDepartureBoard(
-                numRows=5,
-                crs=crs
-            )
+            response = self.client.service.GetDepartureBoard(numRows=num_rows, crs=crs)
+            services = getattr(response.trainServices, "service", [])
             departures = []
-            for train in getattr(response.trainServices, "service", []):
+            for train in services:
                 departures.append({
                     "network": "National Rail",
                     "destination": train.destination.location[0].locationName,
@@ -38,17 +45,17 @@ class DarwinClient:
                 })
             return departures
         except Exception as e:
-            _LOGGER.error("Railboard Darwin API error: %s", e)
+            _LOGGER.error("Darwin API error: %s", e)
             return []
 
+
 # -------------------------------
-# London Overground (TfL) Client
+# TfL client for London Overground
 # -------------------------------
 class TfLClient:
     BASE_URL = "https://api.tfl.gov.uk/StopPoint/{}/Arrivals"
 
     def get_departures(self, naptan_id: str):
-        """Return next Overground departures for a TfL station."""
         try:
             url = self.BASE_URL.format(naptan_id)
             resp = requests.get(url, timeout=10)
@@ -60,11 +67,11 @@ class TfLClient:
                     departures.append({
                         "network": "London Overground",
                         "destination": train.get("destinationName"),
-                        "scheduled": train.get("scheduledDeparture"),  # may need mapping
+                        "scheduled": train.get("scheduledDeparture"),
                         "expected": train.get("expectedArrival"),
                         "status": train.get("modeName", "Unknown")
                     })
             return departures
         except Exception as e:
-            _LOGGER.error("Railboard TfL API error: %s", e)
+            _LOGGER.error("TfL API error: %s", e)
             return []
