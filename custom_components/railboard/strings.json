@@ -1,5 +1,39 @@
 {
   "config": {
-    "title": "Railboard - UK Train Departures"
+    "step": {
+      "user": {
+        "title": "Set up Railboard",
+        "description": "Configure your UK train station departure board.\n\nGet free API credentials at: https://www.realtimetrains.co.uk/about/developer/\n\nFind station codes at: https://www.nationalrail.co.uk/stations/",
+        "data": {
+          "station_code": "Station Code (e.g., PAD, MAN, CYP)",
+          "station_name": "Station Name (Optional)",
+          "api_key": "Realtime Trains API Password",
+          "rtt_username": "Realtime Trains Username (Optional)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to Realtime Trains API. Please check your credentials and station code.",
+      "unknown": "Unexpected error occurred"
+    },
+    "abort": {
+      "already_configured": "This station is already configured"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Railboard Options",
+        "description": "Configure display options for your departure board",
+        "data": {
+          "show_arrivals": "Show arrivals sensor",
+          "max_results": "Maximum number of departures",
+          "show_platforms": "Show platform numbers",
+          "show_status": "Show ON TIME/DELAYED status",
+          "show_calling_points": "Show calling points (via...)",
+          "show_operator_badge": "Show operator badges (SN, LO, etc.)"
+        }
+      }
+    }
   }
 }
