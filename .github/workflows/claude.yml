@@ -1,10 +1,10 @@
 name: Claude Code
 
 on:
-  issues:
-    types: [opened]
   issue_comment:
     types: [created]
+  issues:
+    types: [opened]
 
 jobs:
   claude:
@@ -18,7 +18,7 @@ jobs:
       issues: write
       id-token: write
     steps:
-      - uses: anthropics/claude-code-action@beta
+      - uses: actions/checkout@v4
+      - uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
