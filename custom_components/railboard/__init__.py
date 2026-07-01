@@ -11,23 +11,34 @@ from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import RailboardApiError, RealtimeTrainsClient
+from .tfl_api import TflBusClient
 from .const import (
     ATTR_CONFIG_ENTRY_ID,
     ATTR_RUN_DATE,
     ATTR_SERVICE_UID,
+    BUS_SCAN_INTERVAL,
+    CONF_BUS_ROUTES,
+    CONF_BUS_STOP_ID,
+    CONF_BUS_STOP_NAME,
     CONF_FILTER_DESTINATION,
+    CONF_KIND,
+    CONF_MAX_BUS_RESULTS,
     CONF_MAX_RESULTS,
     CONF_RTT_USERNAME,
     CONF_SHOW_ARRIVALS,
     CONF_SHOW_NEXT_TRAIN,
     CONF_STATION_CODE,
+    CONF_TFL_APP_KEY,
     CONF_WALKING_TIME,
     DEFAULT_FILTER_DESTINATION,
+    DEFAULT_MAX_BUS_RESULTS,
     DEFAULT_MAX_RESULTS,
     DEFAULT_SHOW_ARRIVALS,
     DEFAULT_SHOW_NEXT_TRAIN,
     DEFAULT_WALKING_TIME,
     DOMAIN,
+    KIND_BUS,
+    KIND_RAIL,
     SCAN_INTERVAL,
     SERVICE_GET_SERVICE_DETAIL,
 )
@@ -98,7 +109,25 @@ async def async_setup(hass: HomeAssistant, config: dict):
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
-    """Set up Railboard from a config entry."""
+    """Set up Railboard from a config entry (either a rail station or a TfL bus stop)."""
+    if entry.data.get(CONF_KIND, KIND_RAIL) == KIND_BUS:
+        await _async_setup_bus_entry(hass, entry)
+    else:
+        await _async_setup_rail_entry(hass, entry)
+
+    # Forward the setup to the sensor platforms
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    # Setup options update listener
+    entry.async_on_unload(entry.add_update_listener(update_listener))
+
+    _async_register_services(hass)
+
+    return True
+
+
+async def _async_setup_rail_entry(hass: HomeAssistant, entry: ConfigEntry):
+    """Set up a rail station config entry."""
     station_code = entry.data[CONF_STATION_CODE]
     station_name = entry.data.get("station_name", station_code)
     api_key = entry.data["api_key"]
@@ -150,22 +179,60 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     await coordinator.async_config_entry_first_refresh()
 
     hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = {"coordinator": coordinator, "client": client}
+    hass.data[DOMAIN][entry.entry_id] = {
+        "coordinator": coordinator,
+        "client": client,
+        "kind": KIND_RAIL,
+    }
 
-    # Forward the setup to the sensor platforms
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    # Setup options update listener
-    entry.async_on_unload(entry.add_update_listener(update_listener))
+async def _async_setup_bus_entry(hass: HomeAssistant, entry: ConfigEntry):
+    """Set up a TfL bus stop config entry."""
+    stop_id = entry.data[CONF_BUS_STOP_ID]
+    stop_name = entry.data.get(CONF_BUS_STOP_NAME, stop_id)
+    routes = entry.data.get(CONF_BUS_ROUTES) or []
+    app_key = entry.data.get(CONF_TFL_APP_KEY) or None
 
-    _async_register_services(hass)
+    _LOGGER.info("Setting up Railboard bus stop %s", stop_name)
 
-    return True
+    client = TflBusClient(app_key)
+
+    async def _async_update_data():
+        """Fetch the next bus arrivals for this stop."""
+        max_results = entry.options.get(CONF_MAX_BUS_RESULTS, DEFAULT_MAX_BUS_RESULTS)
+
+        def _fetch():
+            return {"arrivals": client.get_arrivals(stop_id, routes, max_results)}
+
+        try:
+            return await hass.async_add_executor_job(_fetch)
+        except Exception as err:
+            raise UpdateFailed(f"Error communicating with TfL API: {err}") from err
+
+    coordinator = DataUpdateCoordinator(
+        hass,
+        _LOGGER,
+        name=f"railboard_bus_{stop_id}",
+        update_method=_async_update_data,
+        update_interval=BUS_SCAN_INTERVAL,
+    )
+
+    await coordinator.async_config_entry_first_refresh()
+
+    hass.data.setdefault(DOMAIN, {})
+    hass.data[DOMAIN][entry.entry_id] = {
+        "coordinator": coordinator,
+        "client": client,
+        "kind": KIND_BUS,
+    }
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry):
     """Unload a config entry."""
-    _LOGGER.info("Unloading Railboard for %s", entry.data.get("station_name", entry.data.get("station_code")))
+    _LOGGER.info(
+        "Unloading Railboard entry %s",
+        entry.data.get("station_name", entry.data.get(CONF_BUS_STOP_NAME, entry.entry_id)),
+    )
 
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
@@ -188,19 +255,24 @@ def _async_register_services(hass: HomeAssistant):
         return
 
     async def _async_handle_get_service_detail(call: ServiceCall) -> dict:
-        """Look up the full calling-point detail for one specific service, on demand."""
+        """Look up the full calling-point detail for one specific rail service, on demand."""
         entry_id = call.data.get(ATTR_CONFIG_ENTRY_ID)
         domain_data = hass.data.get(DOMAIN, {})
+        rail_entries = {
+            key: value for key, value in domain_data.items() if value.get("kind") == KIND_RAIL
+        }
 
         if entry_id is not None:
             entry_data = domain_data.get(entry_id)
             if entry_data is None:
                 raise ServiceValidationError(f"Unknown Railboard config entry: {entry_id}")
-        elif len(domain_data) == 1:
-            entry_data = next(iter(domain_data.values()))
+            if entry_data.get("kind") != KIND_RAIL:
+                raise ServiceValidationError("get_service_detail only applies to rail station entries")
+        elif len(rail_entries) == 1:
+            entry_data = next(iter(rail_entries.values()))
         else:
             raise ServiceValidationError(
-                "Multiple Railboard stations are configured - specify config_entry_id"
+                "Multiple Railboard rail stations are configured - specify config_entry_id"
             )
 
         client = entry_data["client"]

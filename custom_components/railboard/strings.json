@@ -3,6 +3,14 @@
     "step": {
       "user": {
         "title": "Set up Railboard",
+        "description": "What would you like to add?",
+        "menu_options": {
+          "rail": "Rail station",
+          "bus": "Bus stop"
+        }
+      },
+      "rail": {
+        "title": "Set up a rail station",
         "description": "Configure your UK train station departure board.\n\nGet free API credentials at: https://www.realtimetrains.co.uk/about/developer/\n\nFind station codes at: https://www.nationalrail.co.uk/stations/",
         "data": {
           "station_code": "Station Code (e.g., PAD, MAN, CYP)",
@@ -10,14 +18,37 @@
           "api_key": "Realtime Trains API Password",
           "rtt_username": "Realtime Trains Username (Optional)"
         }
+      },
+      "bus": {
+        "title": "Find a bus stop",
+        "description": "Search for a bus stop by name or postcode.\n\nA TfL API key is optional but recommended - get one for free at: https://api-portal.tfl.gov.uk/",
+        "data": {
+          "query": "Bus stop name or postcode",
+          "tfl_app_key": "TfL API key (Optional)"
+        }
+      },
+      "bus_select": {
+        "title": "Choose your bus stop",
+        "description": "Select the bus stop you want to follow.",
+        "data": {
+          "stop_id": "Bus stop"
+        }
+      },
+      "bus_routes": {
+        "title": "Choose bus routes",
+        "description": "Select which routes at {stop_name} to follow. Leave empty to follow all routes at this stop.",
+        "data": {
+          "routes": "Routes"
+        }
       }
     },
     "error": {
-      "cannot_connect": "Failed to connect to Realtime Trains API. Please check your credentials and station code.",
+      "cannot_connect": "Failed to connect. Please check your credentials/details and try again.",
+      "no_stops_found": "No bus stops found for that search. Try a different name or postcode.",
       "unknown": "Unexpected error occurred"
     },
     "abort": {
-      "already_configured": "This station is already configured"
+      "already_configured": "This station or bus stop is already configured"
     }
   },
   "options": {
@@ -35,7 +66,8 @@
           "show_next_train": "Show next train sensor",
           "show_disruption_sensor": "Show disruption binary sensor",
           "walking_time": "Walking time to station (minutes)",
-          "filter_destination": "Only show trains to this destination (optional)"
+          "filter_destination": "Only show trains to this destination (optional)",
+          "max_bus_results": "Maximum number of buses to show"
         }
       }
     }

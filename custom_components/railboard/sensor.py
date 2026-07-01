@@ -7,6 +7,8 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
+    CONF_BUS_STOP_ID,
+    CONF_BUS_STOP_NAME,
     CONF_SHOW_ARRIVALS,
     CONF_SHOW_CALLING_POINTS,
     CONF_SHOW_NEXT_TRAIN,
@@ -22,6 +24,7 @@ from .const import (
     DEFAULT_SHOW_PLATFORMS,
     DEFAULT_SHOW_STATUS,
     DOMAIN,
+    KIND_BUS,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -35,7 +38,15 @@ async def async_setup_entry(
     """Set up Railboard sensor based on a config entry."""
     _LOGGER.info("Setting up Railboard sensors from config entry")
 
-    coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
+    entry_data = hass.data[DOMAIN][entry.entry_id]
+    coordinator = entry_data["coordinator"]
+
+    if entry_data.get("kind") == KIND_BUS:
+        stop_id = entry.data[CONF_BUS_STOP_ID]
+        stop_name = entry.data.get(CONF_BUS_STOP_NAME, stop_id)
+        async_add_entities([RailboardBusStopSensor(coordinator, stop_id, stop_name)])
+        _LOGGER.info(f"Railboard bus sensor added for {stop_name} ({stop_id})")
+        return
 
     station_code = entry.data[CONF_STATION_CODE]
     station_name = entry.data.get(CONF_STATION_NAME, station_code)
@@ -217,3 +228,44 @@ class RailboardNextTrainSensor(CoordinatorEntity):
         if next_train is not None:
             attrs.update(next_train)
         return attrs
+
+
+class RailboardBusStopSensor(CoordinatorEntity):
+    """Sensor for the next few buses at a followed TfL bus stop."""
+
+    _attr_icon = "mdi:bus"
+    _attr_unit_of_measurement = "min"
+    _attr_should_poll = False
+
+    def __init__(self, coordinator, stop_id, stop_name):
+        """Initialise the sensor."""
+        super().__init__(coordinator)
+        self._stop_id = stop_id
+        self._stop_name = stop_name
+
+        self._attr_name = f"Railboard Bus {stop_name}"
+        self._attr_unique_id = f"railboard_bus_{stop_id.lower()}"
+
+    @property
+    def _arrivals(self):
+        return (self.coordinator.data or {}).get("arrivals", [])
+
+    @property
+    def state(self):
+        """Return the number of minutes until the very next bus."""
+        arrivals = self._arrivals
+        if not arrivals:
+            return None
+        return arrivals[0]["minutes"]
+
+    @property
+    def extra_state_attributes(self):
+        """Return the state attributes."""
+        arrivals = self._arrivals
+        return {
+            "stop_id": self._stop_id,
+            "stop_name": self._stop_name,
+            "arrivals": arrivals,
+            "next_bus_line": arrivals[0]["line"] if arrivals else None,
+            "next_bus_destination": arrivals[0]["destination"] if arrivals else None,
+        }

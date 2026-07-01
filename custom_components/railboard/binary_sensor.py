@@ -16,6 +16,7 @@ from .const import (
     DEFAULT_SHOW_NEXT_TRAIN,
     DEFAULT_WALKING_TIME,
     DOMAIN,
+    KIND_BUS,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -27,7 +28,13 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ):
     """Set up Railboard binary sensors based on a config entry."""
-    coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
+    entry_data = hass.data[DOMAIN][entry.entry_id]
+
+    if entry_data.get("kind") == KIND_BUS:
+        # Bus stops don't have rail-specific disruption/leave-now sensors (yet).
+        return
+
+    coordinator = entry_data["coordinator"]
 
     station_code = entry.data[CONF_STATION_CODE]
     station_name = entry.data.get(CONF_STATION_NAME, station_code)

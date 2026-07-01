@@ -1,6 +1,6 @@
-# Railboard - UK Train Departures for Home Assistant
+# Railboard - UK Train & Bus Departures for Home Assistant
 
-A real-time UK train departure and arrival board integration for Home Assistant.
+A real-time UK train departure/arrival board and TfL bus stop tracker for Home Assistant.
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 [![GitHub release](https://img.shields.io/github/release/crspytopgn/ha-railboard.svg)](https://github.com/crspytopgn/ha-railboard/releases)
@@ -18,16 +18,19 @@ A real-time UK train departure and arrival board integration for Home Assistant.
 ✅ **Disruption sensor** – a binary sensor that turns on when anything at the station is delayed or cancelled
 ✅ **Leave-now sensor** – a binary sensor that turns on once it's time to head to the station
 ✅ **Service detail lookup** – an on-demand service call for full per-stop calling-point detail on any train
+✅ **TfL bus stop tracking** – search for any bus stop, follow specific routes, and see the next few buses due
 ✅ Configurable entirely through the Home Assistant UI
-✅ Uses the Realtime Trains API for reliable data
+✅ Uses the Realtime Trains API and TfL Unified API for reliable data
 
 ## Prerequisites
 
-You need a **free Realtime Trains API account**:
+For rail stations, you need a **free Realtime Trains API account**:
 
 1. Go to https://www.realtimetrains.co.uk/about/developer/
 2. Sign up for a free account
 3. Note your **username** and **password** (API key)
+
+Bus stops use TfL's public Unified API and work without any account, though a free API key (from https://api-portal.tfl.gov.uk/) is recommended for higher rate limits.
 
 ## Installation
 
@@ -58,9 +61,21 @@ Configuration is done entirely through the Home Assistant UI:
 
 1. Go to **Settings → Devices & Services → Add Integration**
 2. Search for **Railboard**
-3. Enter your station code (e.g. `PAD`, `MAN`, `CYP`), an optional display name, and your Realtime Trains credentials
+3. Choose **Rail station** or **Bus stop**
+
+### Rail station
+
+Enter your station code (e.g. `PAD`, `MAN`, `CYP`), an optional display name, and your Realtime Trains credentials.
 
 Find station codes at https://www.nationalrail.co.uk/stations/
+
+### Bus stop
+
+1. Search for the stop by name or postcode (e.g. "Bromley North" or "SE1 9SG"), with an optional TfL API key
+2. Pick the exact stop from the search results
+3. Pick which routes at that stop to follow – leave empty to follow every route serving the stop
+
+Each bus stop becomes its own config entry, so add the flow again for each stop you want to track.
 
 ### Options
 
@@ -77,6 +92,10 @@ After adding the integration, click **Configure** on the entry to set:
 - **Walking time to station (minutes)** – the next train sensor ignores anything departing sooner than this
 - **Only show trains to this destination (optional)** – matches against the destination name or any calling point (e.g. "Reading" also matches trains that call at Reading en route)
 
+Bus stop entries have their own, simpler options:
+
+- **Maximum number of buses to show**
+
 ## Sensors
 
 - `sensor.railboard_departures_<station_code>` – departure board data
@@ -84,6 +103,7 @@ After adding the integration, click **Configure** on the entry to set:
 - `sensor.railboard_next_train_<station_code>` – state is minutes until the next catchable train departs, honouring the walking-time and destination filters (only created if "Show next train sensor" is enabled)
 - `binary_sensor.railboard_disruption_<station_code>` – on if any departure at the station is currently delayed or cancelled
 - `binary_sensor.railboard_leave_now_<station_code>` – on once the next catchable train is due within your configured walking time; use a state trigger on this entity for a "time to leave" automation
+- `sensor.railboard_bus_<stop_id>` – state is minutes until the next followed bus arrives; the `arrivals` attribute lists the next few buses (line, destination, minutes, platform/stop letter) across your followed routes
 
 Each departures/arrivals sensor's state is the number of upcoming services. The full list of services — destination/origin, scheduled and expected times, platform, operator, delay/cancellation status (including reason text when RTT provides one), and calling points — is available as attributes for use in dashboards, templates, and automations.
 

@@ -4,6 +4,12 @@ from datetime import timedelta
 DOMAIN = "railboard"
 
 SCAN_INTERVAL = timedelta(minutes=2)
+BUS_SCAN_INTERVAL = timedelta(seconds=30)
+
+# Entry kind - which back-end/config flow branch a config entry belongs to
+CONF_KIND = "kind"
+KIND_RAIL = "rail"
+KIND_BUS = "bus"
 
 # Configuration
 CONF_STATION_CODE = "station_code"
@@ -20,6 +26,13 @@ CONF_SHOW_DISRUPTION_SENSOR = "show_disruption_sensor"
 CONF_WALKING_TIME = "walking_time"
 CONF_FILTER_DESTINATION = "filter_destination"
 
+# Bus stop configuration
+CONF_BUS_STOP_ID = "stop_id"
+CONF_BUS_STOP_NAME = "stop_name"
+CONF_BUS_ROUTES = "routes"
+CONF_TFL_APP_KEY = "tfl_app_key"
+CONF_MAX_BUS_RESULTS = "max_bus_results"
+
 # Defaults
 DEFAULT_MAX_RESULTS = 15
 DEFAULT_SHOW_ARRIVALS = False
@@ -31,6 +44,7 @@ DEFAULT_SHOW_NEXT_TRAIN = True
 DEFAULT_SHOW_DISRUPTION_SENSOR = True
 DEFAULT_WALKING_TIME = 0
 DEFAULT_FILTER_DESTINATION = ""
+DEFAULT_MAX_BUS_RESULTS = 5
 
 # Services
 SERVICE_GET_SERVICE_DETAIL = "get_service_detail"
