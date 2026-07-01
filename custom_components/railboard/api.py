@@ -1,4 +1,5 @@
 """Railboard API client: Realtime Trains for comprehensive UK rail data."""
+import json
 import logging
 from datetime import datetime
 
@@ -96,6 +97,21 @@ class RealtimeTrainsClient:
             ) from err
 
         services = data.get("services") or []
+
+        if kind == "departure" and services:
+            # Temporary debug aid: dump the raw shape of subsequentCallingPoints from
+            # one real service so it can be confirmed against what _get_calling_points
+            # assumes. Enable with:
+            #   logger:
+            #     logs:
+            #       custom_components.railboard: debug
+            _LOGGER.debug(
+                "Raw subsequentCallingPoints for %s (service %s): %s",
+                station_code,
+                services[0].get("serviceUid", "unknown"),
+                json.dumps(services[0].get("locationDetail", {}).get("subsequentCallingPoints"), indent=2),
+            )
+
         results = []
 
         for service in services[:num_results]:
