@@ -1,6 +1,9 @@
 """Constants for the Railboard integration."""
+from datetime import timedelta
 
 DOMAIN = "railboard"
+
+SCAN_INTERVAL = timedelta(minutes=2)
 
 # Configuration
 CONF_STATION_CODE = "station_code"

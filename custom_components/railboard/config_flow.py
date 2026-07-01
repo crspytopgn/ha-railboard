@@ -80,7 +80,7 @@ class RailboardConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 class RailboardOptionsFlowHandler(config_entries.OptionsFlow):
     """Handle Railboard options."""
 
-    def __init__(self, config_entry):  # FIXED: was **init**
+    def __init__(self, config_entry):
         """Initialize options flow."""
         self.config_entry = config_entry
 
