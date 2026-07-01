@@ -21,6 +21,9 @@ A real-time UK train departure/arrival board and TfL bus stop tracker for Home A
 ✅ **Tracked-service sensor** – pin to one specific scheduled train (e.g. "the 08:03 to Victoria") and follow its live status day to day
 ✅ **Punctuality sensor** – a rolling today's on-time percentage/average delay, computed locally from data already being fetched
 ✅ **Coach count, request-stop, and schedule-variation flags** – exposed on every departure/arrival, no extra calls needed
+✅ **Train formation detail** – unit numbers, coach count, and onboard facilities (wifi, first class, etc.) via the service detail lookup, where RTT has the data
+✅ **First/last train of the day sensors** – for early-morning and late-night planning
+✅ **Journey sensor** – combine two or more already-configured rail stations and/or bus stops into one "which option gets me there soonest" sensor
 ✅ **TfL bus stop tracking** – search for any bus stop, follow specific routes, and see the next few buses due
 ✅ Configurable entirely through the Home Assistant UI
 ✅ Uses the Realtime Trains API and TfL Unified API for reliable data
@@ -64,13 +67,14 @@ Configuration is done entirely through the Home Assistant UI:
 
 1. Go to **Settings → Devices & Services → Add Integration**
 2. Search for **Railboard**
-3. Choose **Rail station** or **Bus stop**
+3. Choose **Rail station**, **Bus stop**, or **Journey**
 
 ### Rail station
 
-Enter your station code (e.g. `PAD`, `MAN`, `CYP`), an optional display name, and your Realtime Trains refresh token.
+1. Enter your Realtime Trains refresh token and search for the station by name (e.g. "Crystal Palace" or "Paddington")
+2. Pick the exact station from the search results, with an optional display-name override
 
-Find station codes at https://www.nationalrail.co.uk/stations/
+Each station becomes its own config entry, so add the flow again for each station you want to track.
 
 ### Bus stop
 
@@ -79,6 +83,10 @@ Find station codes at https://www.nationalrail.co.uk/stations/
 3. Pick which routes at that stop to follow – leave empty to follow every route serving the stop
 
 Each bus stop becomes its own config entry, so add the flow again for each stop you want to track.
+
+### Journey
+
+Combines two or more **already-configured** rail stations and/or bus stops into one sensor showing whichever option is soonest right now — e.g. "walk to Station A or Station B, whichever has a sooner catchable train" or "bus vs train for the same commute." Set up the individual stations/stops first, then add a Journey entry and pick which of them to combine. This makes no extra API calls — it just compares data each leg's own entry is already fetching.
 
 ### Options
 
@@ -97,6 +105,9 @@ After adding the integration, click **Configure** on the entry to set:
 - **Show punctuality sensor**
 - **Track a specific scheduled departure time (optional)** – e.g. `08:03`, to add a sensor that follows that specific recurring service
 - **...to this destination (optional)** – only needed if more than one service departs at the tracked time, to disambiguate which one to follow
+- **Show first/last train of the day sensors** – off by default (fetched once per day when enabled, not on every poll)
+
+Journey entries have no options of their own — recreate the entry if you want to change which legs it combines.
 
 Bus stop entries have their own options:
 
@@ -112,7 +123,10 @@ Bus stop entries have their own options:
 - `binary_sensor.railboard_disruption_<station_code>` – on if any departure at the station is currently delayed or cancelled
 - `binary_sensor.railboard_leave_now_<station_code>` – on once the next catchable train is due within your configured walking time; use a state trigger on this entity for a "time to leave" automation
 - `sensor.railboard_punctuality_<station_code>` – state is today's rolling on-time percentage; attributes include `on_time_count`, `delayed_count`, `cancelled_count`, and `average_delay_minutes`. Resets at local midnight. Computed purely from data already being polled, no extra API calls
-- `sensor.railboard_tracked_<station_code>` – state is the current status ("On time"/"Delayed X min"/"Cancelled") of the one specific service you're tracking (only created if "Track a specific scheduled departure time" is set)
+- `sensor.railboard_tracked_<station_code>` – state is the current status ("On time"/"Delayed X min"/"Cancelled") of the one specific service you're tracking (only created if "Track a specific scheduled departure time" is set). If the tracked service is cancelled, its `fallback_service` attribute holds the next matching departure instead
+- `binary_sensor.railboard_tracked_leave_now_<station_code>` – on once the tracked service is due within your configured walking time
+- `sensor.railboard_first_train_<station_code>` / `sensor.railboard_last_train_<station_code>` – state is the scheduled HH:MM of the first/last departure of the service day (only created if "Show first/last train of the day sensors" is enabled)
+- `sensor.railboard_journey_<id>` – state is minutes until the soonest catchable option across all combined legs; the `options` attribute lists every leg's current best option (which one, minutes, destination/line, status), and `best_leg` names the winning one. Rail legs respect their own walking-time/next-train settings; bus legs are filtered by their own configured walking time too
 - `sensor.railboard_bus_<stop_id>` – state is minutes until the next followed bus arrives; the `arrivals` attribute lists the next few buses (line, destination, minutes, platform/stop letter) across your followed routes
 - `binary_sensor.railboard_bus_disruption_<stop_id>` – on if any followed route currently has a reported disruption (checked by TfL's line status, so it still catches a fully suspended route even when it has no arrivals showing)
 - `binary_sensor.railboard_bus_leave_now_<stop_id>` – on once the next bus is due within your configured walking time
@@ -133,4 +147,4 @@ data:
   service_uid: "{{ state_attr('sensor.railboard_next_train_pad', 'service_uid') }}"
 ```
 
-The response includes the operator, cancellation status, and a `calling_points` list with each stop's name, CRS code, platform, and scheduled/expected arrival and departure times.
+The response includes the operator, cancellation status, a `calling_points` list with each stop's name, CRS code, platform, and scheduled/expected arrival and departure times, and (where RTT has the data) a `formation` object with `leading_class`, `passenger_vehicles`, per-unit `units` (identity/stock type/vehicle count), `facilities` (e.g. wifi, toilet, first), and `has_first_class`. `formation` is `null` when RTT doesn't have allocation data for that service.

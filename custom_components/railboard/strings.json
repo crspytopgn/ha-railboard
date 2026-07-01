@@ -6,16 +6,24 @@
         "description": "What would you like to add?",
         "menu_options": {
           "rail": "Rail station",
-          "bus": "Bus stop"
+          "bus": "Bus stop",
+          "journey": "Journey (combine existing stations/stops)"
         }
       },
       "rail": {
-        "title": "Set up a rail station",
-        "description": "Configure your UK train station departure board.\n\nSign up for a free refresh token at: https://api-portal.rtt.io (requires an RTT unified login account)\n\nFind station codes at: https://www.nationalrail.co.uk/stations/",
+        "title": "Find a rail station",
+        "description": "Search for a UK station by name.\n\nSign up for a free refresh token at: https://api-portal.rtt.io (requires an RTT unified login account)",
         "data": {
-          "station_code": "Station Code (e.g., PAD, MAN, CYP)",
-          "station_name": "Station Name (Optional)",
-          "refresh_token": "Realtime Trains API Refresh Token"
+          "refresh_token": "Realtime Trains API Refresh Token",
+          "query": "Station name (e.g. Crystal Palace, Paddington)"
+        }
+      },
+      "rail_select": {
+        "title": "Choose your station",
+        "description": "Select the station you want to follow.",
+        "data": {
+          "station_code": "Station",
+          "station_name": "Display Name (Optional)"
         }
       },
       "bus": {
@@ -39,15 +47,25 @@
         "data": {
           "routes": "Routes"
         }
+      },
+      "journey": {
+        "title": "Combine stations/stops into a journey",
+        "description": "Pick two or more already-configured rail stations or bus stops. The journey sensor shows whichever option currently gets you there soonest.",
+        "data": {
+          "journey_name": "Journey name (e.g. Commute to Victoria)",
+          "legs": "Stations/stops to combine"
+        }
       }
     },
     "error": {
       "cannot_connect": "Failed to connect. Please check your credentials/details and try again.",
-      "no_stops_found": "No bus stops found for that search. Try a different name or postcode.",
+      "no_stops_found": "Nothing found for that search. Try a different name.",
+      "need_two_legs": "Pick at least two stations/stops to combine.",
       "unknown": "Unexpected error occurred"
     },
     "abort": {
-      "already_configured": "This station or bus stop is already configured"
+      "already_configured": "This station, bus stop, or journey is already configured",
+      "no_legs_available": "You need at least two configured rail stations or bus stops before you can create a journey."
     }
   },
   "options": {
@@ -69,9 +87,13 @@
           "max_bus_results": "Maximum number of buses to show",
           "show_punctuality_sensor": "Show punctuality sensor",
           "tracked_time": "Track a specific scheduled departure time (optional, e.g. 08:03)",
-          "tracked_destination": "...to this destination (optional, disambiguates same-time departures)"
+          "tracked_destination": "...to this destination (optional, disambiguates same-time departures)",
+          "show_first_last_train": "Show first/last train of the day sensors"
         }
       }
+    },
+    "abort": {
+      "no_options": "Journey entries have no configurable options."
     }
   }
 }

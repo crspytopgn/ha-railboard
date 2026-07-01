@@ -22,11 +22,14 @@ from .const import (
     CONF_BUS_STOP_ID,
     CONF_BUS_STOP_NAME,
     CONF_FILTER_DESTINATION,
+    CONF_JOURNEY_LEGS,
+    CONF_JOURNEY_NAME,
     CONF_KIND,
     CONF_MAX_BUS_RESULTS,
     CONF_MAX_RESULTS,
     CONF_RTT_REFRESH_TOKEN,
     CONF_SHOW_ARRIVALS,
+    CONF_SHOW_FIRST_LAST_TRAIN,
     CONF_SHOW_NEXT_TRAIN,
     CONF_STATION_CODE,
     CONF_TFL_APP_KEY,
@@ -37,12 +40,14 @@ from .const import (
     DEFAULT_MAX_BUS_RESULTS,
     DEFAULT_MAX_RESULTS,
     DEFAULT_SHOW_ARRIVALS,
+    DEFAULT_SHOW_FIRST_LAST_TRAIN,
     DEFAULT_SHOW_NEXT_TRAIN,
     DEFAULT_TRACKED_DESTINATION,
     DEFAULT_TRACKED_TIME,
     DEFAULT_WALKING_TIME,
     DOMAIN,
     KIND_BUS,
+    KIND_JOURNEY,
     KIND_RAIL,
     SCAN_INTERVAL,
     SERVICE_GET_SERVICE_DETAIL,
@@ -103,21 +108,35 @@ def _select_tracked_service(departures: list, tracked_time: str, tracked_destina
 
     Unlike next_train, this pins to one specific recurring service (e.g. "the
     08:03 to Victoria") rather than the earliest catchable one, so a regular
-    commuter can follow the same train's live status day to day.
+    commuter can follow the same train's live status day to day. If the
+    tracked service is cancelled, "fallback_service" is set to the next
+    matching departure after it, so there's still something useful to act on.
     """
     needle = (tracked_destination or "").strip().lower()
+    candidates = [
+        d for d in departures if not needle or needle in d.get("destination", "").lower()
+    ]
 
-    for departure in departures:
-        if departure.get("scheduled") != tracked_time:
-            continue
-        if needle and needle not in departure.get("destination", "").lower():
-            continue
+    tracked = None
+    tracked_index = None
+    for index, departure in enumerate(candidates):
+        if departure.get("scheduled") == tracked_time:
+            tracked = dict(departure)
+            tracked_index = index
+            break
 
-        tracked = dict(departure)
-        tracked["minutes_until_departure"] = _minutes_until(departure.get("expected"), now)
-        return tracked
+    if tracked is None:
+        return None
 
-    return None
+    tracked["minutes_until_departure"] = _minutes_until(tracked.get("expected"), now)
+
+    tracked["fallback_service"] = None
+    if tracked.get("is_cancelled") and tracked_index + 1 < len(candidates):
+        fallback = dict(candidates[tracked_index + 1])
+        fallback["minutes_until_departure"] = _minutes_until(fallback.get("expected"), now)
+        tracked["fallback_service"] = fallback
+
+    return tracked
 
 
 class _PunctualityTracker:
@@ -190,9 +209,12 @@ async def async_setup(hass: HomeAssistant, config: dict):
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
-    """Set up Railboard from a config entry (either a rail station or a TfL bus stop)."""
-    if entry.data.get(CONF_KIND, KIND_RAIL) == KIND_BUS:
+    """Set up Railboard from a config entry (a rail station, a TfL bus stop, or a journey)."""
+    kind = entry.data.get(CONF_KIND, KIND_RAIL)
+    if kind == KIND_BUS:
         await _async_setup_bus_entry(hass, entry)
+    elif kind == KIND_JOURNEY:
+        await _async_setup_journey_entry(hass, entry)
     else:
         await _async_setup_rail_entry(hass, entry)
 
@@ -217,6 +239,7 @@ async def _async_setup_rail_entry(hass: HomeAssistant, entry: ConfigEntry):
 
     client = RealtimeTrainsClient(refresh_token)
     punctuality = _PunctualityTracker()
+    first_last_cache = {"day": None, "data": None}
 
     async def _async_update_data():
         """Fetch the latest departures/arrivals (one call covers both) for this entry."""
@@ -226,7 +249,9 @@ async def _async_setup_rail_entry(hass: HomeAssistant, entry: ConfigEntry):
         filter_destination = entry.options.get(CONF_FILTER_DESTINATION, DEFAULT_FILTER_DESTINATION)
         tracked_time = entry.options.get(CONF_TRACKED_TIME, DEFAULT_TRACKED_TIME)
         tracked_destination = entry.options.get(CONF_TRACKED_DESTINATION, DEFAULT_TRACKED_DESTINATION)
+        show_first_last_train = entry.options.get(CONF_SHOW_FIRST_LAST_TRAIN, DEFAULT_SHOW_FIRST_LAST_TRAIN)
         now = dt_util.now()
+        today = now.strftime("%Y-%m-%d")
 
         def _fetch():
             board = client.get_board(station_code, max_results)
@@ -255,7 +280,15 @@ async def _async_setup_rail_entry(hass: HomeAssistant, entry: ConfigEntry):
                 d for d in departures if d.get("is_cancelled") or d.get("is_delayed")
             ]
 
-            data["punctuality"] = punctuality.update(departures, now.strftime("%Y-%m-%d"))
+            data["punctuality"] = punctuality.update(departures, today)
+
+            if show_first_last_train:
+                # First/last train rarely changes intra-day - fetch it once per day
+                # rather than on every poll.
+                if first_last_cache["day"] != today:
+                    first_last_cache["day"] = today
+                    first_last_cache["data"] = client.get_first_last_train(station_code)
+                data["first_last_train"] = first_last_cache["data"]
 
             return data
 
@@ -333,11 +366,28 @@ async def _async_setup_bus_entry(hass: HomeAssistant, entry: ConfigEntry):
     }
 
 
+async def _async_setup_journey_entry(hass: HomeAssistant, entry: ConfigEntry):
+    """Set up a journey entry - combines other already-configured rail/bus entries.
+
+    This has no coordinator of its own and makes no API calls: it just reads
+    the already-polled data from the referenced entries' own coordinators at
+    render time (see RailboardJourneySensor).
+    """
+    _LOGGER.info("Setting up Railboard journey %s", entry.data.get(CONF_JOURNEY_NAME, entry.entry_id))
+
+    hass.data.setdefault(DOMAIN, {})
+    hass.data[DOMAIN][entry.entry_id] = {
+        "kind": KIND_JOURNEY,
+        "name": entry.data.get(CONF_JOURNEY_NAME, "Journey"),
+        "legs": entry.data.get(CONF_JOURNEY_LEGS, []),
+    }
+
+
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry):
     """Unload a config entry."""
     _LOGGER.info(
         "Unloading Railboard entry %s",
-        entry.data.get("station_name", entry.data.get(CONF_BUS_STOP_NAME, entry.entry_id)),
+        entry.data.get("station_name", entry.data.get(CONF_BUS_STOP_NAME, entry.data.get(CONF_JOURNEY_NAME, entry.entry_id))),
     )
 
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)

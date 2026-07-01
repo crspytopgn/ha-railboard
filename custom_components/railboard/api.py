@@ -31,6 +31,7 @@ class RealtimeTrainsClient:
         self._access_token = None
         self._access_token_expiry = None
         self._detailed_supported = True
+        self._stops_cache = None
 
     def get_board(self, station_code: str, num_results: int = 15, filter_to: str = None) -> dict:
         """Fetch departures and arrivals at a station from a single query.
@@ -68,6 +69,69 @@ class RealtimeTrainsClient:
         return {
             "departures": departures[:num_results],
             "arrivals": arrivals[:num_results],
+        }
+
+    def search_stops(self, query: str) -> list:
+        """Search for a rail station by name (case-insensitive substring match).
+
+        RTT's reference-data endpoint (/data/stops) returns the full stop list
+        for the namespace with no server-side filtering, so this fetches it
+        once (cached for this client's lifetime, since it's near-static
+        reference data) and filters locally. Returns [{code, name}, ...].
+        """
+        if self._stops_cache is None:
+            data = self._get("/data/stops")
+            self._stops_cache = data.get("stops") or []
+
+        needle = query.strip().lower()
+        matches = []
+        for stop in self._stops_cache:
+            description = stop.get("description", "")
+            if needle in description.lower():
+                matches.append({"code": stop.get("shortCode", ""), "name": description})
+
+        return matches[:25]
+
+    def get_first_last_train(self, station_code: str) -> dict:
+        """Fetch the first and last scheduled departures of the current service day.
+
+        Two extra requests scoped to the early-morning and late-evening
+        windows - meant to be cached by the caller (e.g. once per day) rather
+        than polled regularly, since this rarely changes intra-day.
+        """
+        now_local = datetime.now(_LONDON_TZ)
+        today_start = now_local.replace(hour=0, minute=1, second=0, microsecond=0)
+        morning_cutoff = now_local.replace(hour=9, minute=0, second=0, microsecond=0)
+        evening_start = now_local.replace(hour=20, minute=0, second=0, microsecond=0)
+        next_day_cutoff = (now_local + timedelta(days=1)).replace(hour=2, minute=0, second=0, microsecond=0)
+
+        first_services = self._get_location_services(
+            station_code, time_from=today_start, time_to=morning_cutoff
+        )
+        last_services = self._get_location_services(
+            station_code, time_from=evening_start, time_to=next_day_cutoff
+        )
+
+        # Sort by the raw UTC ISO datetime (not the formatted local HH:MM string,
+        # which would sort incorrectly across the midnight boundary in this window).
+        def _departure_sort_key(item):
+            return ((item.get("temporalData") or {}).get("departure") or {}).get("scheduleAdvertised") or ""
+
+        first_departures = [
+            self._parse_service(item, "departure")
+            for item in sorted(first_services, key=_departure_sort_key)
+        ]
+        first_departures = [d for d in first_departures if d]
+
+        last_departures = [
+            self._parse_service(item, "departure")
+            for item in sorted(last_services, key=_departure_sort_key)
+        ]
+        last_departures = [d for d in last_departures if d]
+
+        return {
+            "first_train": first_departures[0] if first_departures else None,
+            "last_train": last_departures[-1] if last_departures else None,
         }
 
     def get_service_detail(self, service_uid: str, run_date: str = None) -> dict:
@@ -129,11 +193,58 @@ class RealtimeTrainsClient:
             "operator": operator.get("name", "Unknown"),
             "is_cancelled": is_cancelled,
             "calling_points": calling_points,
+            "formation": self._parse_formation(service.get("allocationData")),
         }
 
-    def _get_location_services(self, station_code: str, filter_to: str = None) -> list:
-        """Fetch the raw list of services at a station in the current time window."""
-        params = {"code": station_code, "timeWindow": 120}
+    @staticmethod
+    def _parse_formation(allocation_data: list):
+        """Summarise train formation/facility data, if RTT provided any for this service.
+
+        allocationData isn't guaranteed to be present (depends on the token's
+        entitlements and whether RTT has allocation data for this operator),
+        so this returns None rather than an empty/misleading summary.
+        """
+        if not allocation_data:
+            return None
+
+        primary = allocation_data[0]
+        know_your_train = primary.get("knowYourTrainData") or {}
+        common_facilities = know_your_train.get("commonFacilities")
+
+        if isinstance(common_facilities, list):
+            facilities = list(common_facilities)
+        elif isinstance(common_facilities, dict):
+            facilities = [key for key, value in common_facilities.items() if value]
+        else:
+            facilities = []
+
+        units = [
+            {
+                "identity": item.get("identity", ""),
+                "stock_type": item.get("stockType", ""),
+                "number_of_vehicles": item.get("numberOfVehicles"),
+            }
+            for item in primary.get("allocationItems") or []
+        ]
+
+        return {
+            "leading_class": primary.get("leadingClass", ""),
+            "passenger_vehicles": primary.get("passengerVehicles"),
+            "units": units,
+            "facilities": facilities,
+            "has_first_class": "first" in facilities,
+        }
+
+    def _get_location_services(
+        self, station_code: str, filter_to: str = None, time_from: datetime = None, time_to: datetime = None
+    ) -> list:
+        """Fetch the raw list of services at a station in the given (or default) time window."""
+        params = {"code": station_code}
+        if time_from is not None and time_to is not None:
+            params["timeFrom"] = time_from.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            params["timeTo"] = time_to.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        else:
+            params["timeWindow"] = 120
         if filter_to:
             params["filterTo"] = filter_to
 

@@ -10,6 +10,7 @@ BUS_SCAN_INTERVAL = timedelta(seconds=30)
 CONF_KIND = "kind"
 KIND_RAIL = "rail"
 KIND_BUS = "bus"
+KIND_JOURNEY = "journey"
 
 # Configuration
 CONF_STATION_CODE = "station_code"
@@ -28,6 +29,11 @@ CONF_FILTER_DESTINATION = "filter_destination"
 CONF_TRACKED_TIME = "tracked_time"
 CONF_TRACKED_DESTINATION = "tracked_destination"
 CONF_SHOW_PUNCTUALITY_SENSOR = "show_punctuality_sensor"
+CONF_SHOW_FIRST_LAST_TRAIN = "show_first_last_train"
+
+# Journey configuration (combines existing rail/bus entries into one sensor)
+CONF_JOURNEY_NAME = "journey_name"
+CONF_JOURNEY_LEGS = "legs"
 
 # Bus stop configuration
 CONF_BUS_STOP_ID = "stop_id"
@@ -51,6 +57,7 @@ DEFAULT_FILTER_DESTINATION = ""
 DEFAULT_TRACKED_TIME = ""
 DEFAULT_TRACKED_DESTINATION = ""
 DEFAULT_SHOW_PUNCTUALITY_SENSOR = True
+DEFAULT_SHOW_FIRST_LAST_TRAIN = False
 DEFAULT_MAX_BUS_RESULTS = 5
 
 # Services

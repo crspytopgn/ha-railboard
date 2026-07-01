@@ -6,20 +6,26 @@ import voluptuous as vol
 import homeassistant.helpers.config_validation as cv
 from homeassistant import config_entries
 from homeassistant.core import callback
+from homeassistant.util import slugify
 
-from .api import RealtimeTrainsClient
+from .api import RailboardApiError, RealtimeTrainsClient
 from .const import (
     CONF_BUS_ALL_ROUTES,
     CONF_BUS_ROUTES,
     CONF_BUS_STOP_ID,
     CONF_BUS_STOP_NAME,
     CONF_FILTER_DESTINATION,
+    CONF_JOURNEY_LEGS,
+    CONF_JOURNEY_NAME,
     CONF_KIND,
     CONF_MAX_BUS_RESULTS,
     CONF_RTT_REFRESH_TOKEN,
     CONF_SHOW_DISRUPTION_SENSOR,
+    CONF_SHOW_FIRST_LAST_TRAIN,
     CONF_SHOW_NEXT_TRAIN,
     CONF_SHOW_PUNCTUALITY_SENSOR,
+    CONF_STATION_CODE,
+    CONF_STATION_NAME,
     CONF_TFL_APP_KEY,
     CONF_TRACKED_DESTINATION,
     CONF_TRACKED_TIME,
@@ -27,6 +33,7 @@ from .const import (
     DEFAULT_FILTER_DESTINATION,
     DEFAULT_MAX_BUS_RESULTS,
     DEFAULT_SHOW_DISRUPTION_SENSOR,
+    DEFAULT_SHOW_FIRST_LAST_TRAIN,
     DEFAULT_SHOW_NEXT_TRAIN,
     DEFAULT_SHOW_PUNCTUALITY_SENSOR,
     DEFAULT_TRACKED_DESTINATION,
@@ -34,6 +41,7 @@ from .const import (
     DEFAULT_WALKING_TIME,
     DOMAIN,
     KIND_BUS,
+    KIND_JOURNEY,
     KIND_RAIL,
 )
 from .tfl_api import TflApiError, TflBusClient
@@ -47,65 +55,91 @@ class RailboardConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
     def __init__(self):
-        """Initialise transient state used while setting up a bus stop."""
+        """Initialise transient state used while setting up a bus stop, rail station, or journey."""
         self._bus_app_key = None
         self._bus_matches = []
         self._bus_stop_id = None
         self._bus_stop_name = None
         self._bus_available_routes = []
+        self._rail_refresh_token = None
+        self._rail_matches = []
 
     async def async_step_user(self, user_input=None):
-        """Let the user choose whether to add a rail station or a bus stop."""
-        return self.async_show_menu(menu_options=["rail", "bus"])
+        """Let the user choose what to add."""
+        return self.async_show_menu(menu_options=["rail", "bus", "journey"])
 
     async def async_step_rail(self, user_input=None):
-        """Handle setting up a rail station."""
+        """Search for a rail station by name using RTT's reference-data endpoint."""
         errors = {}
 
         if user_input is not None:
-            # Validate the refresh token
+            self._rail_refresh_token = user_input[CONF_RTT_REFRESH_TOKEN]
+            client = RealtimeTrainsClient(self._rail_refresh_token)
+
             try:
-                client = RealtimeTrainsClient(user_input[CONF_RTT_REFRESH_TOKEN])
-
-                # Try to fetch the board to validate the token and station code
-                await self.hass.async_add_executor_job(
-                    client.get_board,
-                    user_input["station_code"],
-                    1
-                )
-
-                # Create a unique ID based on station code
-                await self.async_set_unique_id(f"railboard_{user_input['station_code'].lower()}")
-                self._abort_if_unique_id_configured()
-
-                # If validation succeeds, create the entry
-                data = dict(user_input)
-                data[CONF_KIND] = KIND_RAIL
-                return self.async_create_entry(
-                    title=user_input.get("station_name", user_input["station_code"]),
-                    data=data,
-                )
-
-            except Exception as e:
-                _LOGGER.error(f"Error validating Railboard config: {e}")
+                matches = await self.hass.async_add_executor_job(client.search_stops, user_input["query"])
+            except RailboardApiError as err:
+                _LOGGER.error("Error searching RTT stations: %s", err)
                 errors["base"] = "cannot_connect"
-
-        # Show the configuration form
-        data_schema = vol.Schema({
-            vol.Required("station_code"): str,
-            vol.Optional("station_name"): str,
-            vol.Required(CONF_RTT_REFRESH_TOKEN): str,
-        })
+            else:
+                if not matches:
+                    errors["base"] = "no_stops_found"
+                else:
+                    self._rail_matches = matches
+                    return await self.async_step_rail_select()
 
         return self.async_show_form(
             step_id="rail",
-            data_schema=data_schema,
+            data_schema=vol.Schema({
+                vol.Required(CONF_RTT_REFRESH_TOKEN): str,
+                vol.Required("query"): str,
+            }),
             errors=errors,
-            description_placeholders={
-                "station_code_url": "https://www.nationalrail.co.uk/stations/",
-                "api_url": "https://api-portal.rtt.io",
-            }
         )
+
+    async def async_step_rail_select(self, user_input=None):
+        """Let the user pick their station from the search results, and confirm credentials."""
+        errors = {}
+        options = {match["code"]: f"{match['name']} ({match['code']})" for match in self._rail_matches}
+
+        if user_input is not None:
+            station_code = user_input["station_code"]
+            station_name = user_input.get("station_name") or self._rail_match_name(station_code)
+            client = RealtimeTrainsClient(self._rail_refresh_token)
+
+            try:
+                await self.hass.async_add_executor_job(client.get_board, station_code, 1)
+            except Exception as e:
+                _LOGGER.error(f"Error validating Railboard config: {e}")
+                errors["base"] = "cannot_connect"
+            else:
+                await self.async_set_unique_id(f"railboard_{station_code.lower()}")
+                self._abort_if_unique_id_configured()
+
+                return self.async_create_entry(
+                    title=station_name,
+                    data={
+                        CONF_KIND: KIND_RAIL,
+                        CONF_STATION_CODE: station_code,
+                        CONF_STATION_NAME: station_name,
+                        CONF_RTT_REFRESH_TOKEN: self._rail_refresh_token,
+                    },
+                )
+
+        return self.async_show_form(
+            step_id="rail_select",
+            data_schema=vol.Schema({
+                vol.Required("station_code"): vol.In(options),
+                vol.Optional("station_name"): str,
+            }),
+            errors=errors,
+        )
+
+    def _rail_match_name(self, code: str) -> str:
+        for match in self._rail_matches:
+            if match["code"] == code:
+                return match["name"]
+        return code
 
     async def async_step_bus(self, user_input=None):
         """Ask for an optional TfL API key and a bus stop search query."""
@@ -196,6 +230,45 @@ class RailboardConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return match["name"]
         return stop_id
 
+    async def async_step_journey(self, user_input=None):
+        """Combine already-configured rail stations and bus stops into one "best option" sensor."""
+        errors = {}
+        existing = [
+            entry for entry in self.hass.config_entries.async_entries(DOMAIN)
+            if entry.data.get(CONF_KIND, KIND_RAIL) in (KIND_RAIL, KIND_BUS)
+        ]
+        options = {entry.entry_id: entry.title for entry in existing}
+
+        if not options:
+            return self.async_abort(reason="no_legs_available")
+
+        if user_input is not None:
+            legs = user_input.get(CONF_JOURNEY_LEGS, [])
+            if len(legs) < 2:
+                errors["base"] = "need_two_legs"
+            else:
+                name = user_input[CONF_JOURNEY_NAME]
+                await self.async_set_unique_id(f"railboard_journey_{slugify(name)}")
+                self._abort_if_unique_id_configured()
+
+                return self.async_create_entry(
+                    title=f"Journey: {name}",
+                    data={
+                        CONF_KIND: KIND_JOURNEY,
+                        CONF_JOURNEY_NAME: name,
+                        CONF_JOURNEY_LEGS: legs,
+                    },
+                )
+
+        return self.async_show_form(
+            step_id="journey",
+            data_schema=vol.Schema({
+                vol.Required(CONF_JOURNEY_NAME): str,
+                vol.Required(CONF_JOURNEY_LEGS): cv.multi_select(options),
+            }),
+            errors=errors,
+        )
+
     @staticmethod
     @callback
     def async_get_options_flow(config_entry):
@@ -212,8 +285,11 @@ class RailboardOptionsFlowHandler(config_entries.OptionsFlow):
 
     async def async_step_init(self, user_input=None):
         """Manage the options."""
-        if self.config_entry.data.get(CONF_KIND, KIND_RAIL) == KIND_BUS:
+        kind = self.config_entry.data.get(CONF_KIND, KIND_RAIL)
+        if kind == KIND_BUS:
             return await self._async_step_bus_options(user_input)
+        if kind == KIND_JOURNEY:
+            return self.async_abort(reason="no_options")
         return await self._async_step_rail_options(user_input)
 
     async def _async_step_rail_options(self, user_input=None):
@@ -280,6 +356,12 @@ class RailboardOptionsFlowHandler(config_entries.OptionsFlow):
                     CONF_TRACKED_DESTINATION,
                     default=self.config_entry.options.get(CONF_TRACKED_DESTINATION, DEFAULT_TRACKED_DESTINATION)
                 ): str,
+                vol.Optional(
+                    CONF_SHOW_FIRST_LAST_TRAIN,
+                    default=self.config_entry.options.get(
+                        CONF_SHOW_FIRST_LAST_TRAIN, DEFAULT_SHOW_FIRST_LAST_TRAIN
+                    )
+                ): bool,
             })
         )
 

@@ -13,12 +13,15 @@ from .const import (
     CONF_SHOW_NEXT_TRAIN,
     CONF_STATION_CODE,
     CONF_STATION_NAME,
+    CONF_TRACKED_TIME,
     CONF_WALKING_TIME,
     DEFAULT_SHOW_DISRUPTION_SENSOR,
     DEFAULT_SHOW_NEXT_TRAIN,
+    DEFAULT_TRACKED_TIME,
     DEFAULT_WALKING_TIME,
     DOMAIN,
     KIND_BUS,
+    KIND_JOURNEY,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -31,10 +34,16 @@ async def async_setup_entry(
 ):
     """Set up Railboard binary sensors based on a config entry."""
     entry_data = hass.data[DOMAIN][entry.entry_id]
+    kind = entry_data.get("kind")
+
+    if kind == KIND_JOURNEY:
+        # Journey entries have a single combined sensor only (see sensor.py).
+        return
+
     coordinator = entry_data["coordinator"]
     options = entry.options
 
-    if entry_data.get("kind") == KIND_BUS:
+    if kind == KIND_BUS:
         stop_id = entry.data[CONF_BUS_STOP_ID]
         stop_name = entry.data.get(CONF_BUS_STOP_NAME, stop_id)
         entities = []
@@ -59,6 +68,11 @@ async def async_setup_entry(
     if options.get(CONF_SHOW_NEXT_TRAIN, DEFAULT_SHOW_NEXT_TRAIN):
         walking_time = options.get(CONF_WALKING_TIME, DEFAULT_WALKING_TIME)
         entities.append(RailboardLeaveNowSensor(coordinator, station_code, station_name, walking_time))
+
+    tracked_time = options.get(CONF_TRACKED_TIME, DEFAULT_TRACKED_TIME)
+    if tracked_time:
+        walking_time = options.get(CONF_WALKING_TIME, DEFAULT_WALKING_TIME)
+        entities.append(RailboardTrackedLeaveNowSensor(coordinator, station_code, station_name, walking_time))
 
     async_add_entities(entities)
 
@@ -139,6 +153,49 @@ class RailboardLeaveNowSensor(CoordinatorEntity):
             "station_name": self._station_name,
             "walking_time": self._walking_time,
             "minutes_until_departure": next_train.get("minutes_until_departure"),
+        }
+
+
+class RailboardTrackedLeaveNowSensor(CoordinatorEntity):
+    """Binary sensor that turns on once it's time to leave to catch the tracked service."""
+
+    _attr_icon = "mdi:shoe-print"
+    _attr_should_poll = False
+
+    def __init__(self, coordinator, station_code, station_name, walking_time):
+        """Initialise the sensor."""
+        super().__init__(coordinator)
+        self._station_code = station_code
+        self._station_name = station_name
+        self._walking_time = walking_time
+
+        self._attr_name = f"Railboard Tracked Leave Now {station_name}"
+        self._attr_unique_id = f"railboard_tracked_leave_now_{station_code.lower()}"
+
+    @property
+    def _tracked(self):
+        return (self.coordinator.data or {}).get("tracked_service")
+
+    @property
+    def is_on(self):
+        """Return True once the tracked service is due within the walking time."""
+        tracked = self._tracked
+        if tracked is None:
+            return False
+        minutes = tracked.get("minutes_until_departure")
+        if minutes is None:
+            return False
+        return minutes <= self._walking_time
+
+    @property
+    def extra_state_attributes(self):
+        """Return the state attributes."""
+        tracked = self._tracked or {}
+        return {
+            "station_code": self._station_code,
+            "station_name": self._station_name,
+            "walking_time": self._walking_time,
+            "minutes_until_departure": tracked.get("minutes_until_departure"),
         }
 
 
