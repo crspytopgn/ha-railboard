@@ -25,7 +25,7 @@ from .const import (
     CONF_KIND,
     CONF_MAX_BUS_RESULTS,
     CONF_MAX_RESULTS,
-    CONF_RTT_USERNAME,
+    CONF_RTT_REFRESH_TOKEN,
     CONF_SHOW_ARRIVALS,
     CONF_SHOW_NEXT_TRAIN,
     CONF_STATION_CODE,
@@ -131,27 +131,26 @@ async def _async_setup_rail_entry(hass: HomeAssistant, entry: ConfigEntry):
     """Set up a rail station config entry."""
     station_code = entry.data[CONF_STATION_CODE]
     station_name = entry.data.get("station_name", station_code)
-    api_key = entry.data["api_key"]
-    rtt_username = entry.data.get(CONF_RTT_USERNAME, f"rttapi_{station_code.lower()}")
+    refresh_token = entry.data[CONF_RTT_REFRESH_TOKEN]
 
     _LOGGER.info("Setting up Railboard for %s", station_name)
 
-    client = RealtimeTrainsClient(rtt_username, api_key)
+    client = RealtimeTrainsClient(refresh_token)
 
     async def _async_update_data():
-        """Fetch the latest departures (and arrivals, if enabled) for this entry."""
-        show_arrivals = entry.options.get(CONF_SHOW_ARRIVALS, DEFAULT_SHOW_ARRIVALS)
+        """Fetch the latest departures/arrivals (one call covers both) for this entry."""
         show_next_train = entry.options.get(CONF_SHOW_NEXT_TRAIN, DEFAULT_SHOW_NEXT_TRAIN)
         max_results = entry.options.get(CONF_MAX_RESULTS, DEFAULT_MAX_RESULTS)
         walking_time = entry.options.get(CONF_WALKING_TIME, DEFAULT_WALKING_TIME)
         filter_destination = entry.options.get(CONF_FILTER_DESTINATION, DEFAULT_FILTER_DESTINATION)
 
         def _fetch():
-            departures = client.get_departures(station_code, max_results)
+            board = client.get_board(station_code, max_results)
+            departures = board["departures"]
             data = {"departures": departures}
 
-            if show_arrivals:
-                data["arrivals"] = client.get_arrivals(station_code, max_results)
+            if entry.options.get(CONF_SHOW_ARRIVALS, DEFAULT_SHOW_ARRIVALS):
+                data["arrivals"] = board["arrivals"]
 
             if show_next_train:
                 data["next_train"] = _select_next_train(

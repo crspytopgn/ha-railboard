@@ -11,12 +11,11 @@
       },
       "rail": {
         "title": "Set up a rail station",
-        "description": "Configure your UK train station departure board.\n\nGet free API credentials at: https://www.realtimetrains.co.uk/about/developer/\n\nFind station codes at: https://www.nationalrail.co.uk/stations/",
+        "description": "Configure your UK train station departure board.\n\nSign up for a free refresh token at: https://api-portal.rtt.io (requires an RTT unified login account)\n\nFind station codes at: https://www.nationalrail.co.uk/stations/",
         "data": {
           "station_code": "Station Code (e.g., PAD, MAN, CYP)",
           "station_name": "Station Name (Optional)",
-          "api_key": "Realtime Trains API Password",
-          "rtt_username": "Realtime Trains Username (Optional)"
+          "refresh_token": "Realtime Trains API Refresh Token"
         }
       },
       "bus": {

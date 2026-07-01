@@ -16,6 +16,7 @@ from .const import (
     CONF_FILTER_DESTINATION,
     CONF_KIND,
     CONF_MAX_BUS_RESULTS,
+    CONF_RTT_REFRESH_TOKEN,
     CONF_SHOW_DISRUPTION_SENSOR,
     CONF_SHOW_NEXT_TRAIN,
     CONF_TFL_APP_KEY,
@@ -56,17 +57,13 @@ class RailboardConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
 
         if user_input is not None:
-            # Validate the API credentials
+            # Validate the refresh token
             try:
-                # Test the API connection
-                client = RealtimeTrainsClient(
-                    user_input.get("rtt_username", f"rttapi_{user_input['station_code'].lower()}"),
-                    user_input["api_key"]
-                )
+                client = RealtimeTrainsClient(user_input[CONF_RTT_REFRESH_TOKEN])
 
-                # Try to fetch departures to validate credentials
+                # Try to fetch the board to validate the token and station code
                 await self.hass.async_add_executor_job(
-                    client.get_departures,
+                    client.get_board,
                     user_input["station_code"],
                     1
                 )
@@ -91,8 +88,7 @@ class RailboardConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         data_schema = vol.Schema({
             vol.Required("station_code"): str,
             vol.Optional("station_name"): str,
-            vol.Required("api_key"): str,
-            vol.Optional("rtt_username"): str,
+            vol.Required(CONF_RTT_REFRESH_TOKEN): str,
         })
 
         return self.async_show_form(
@@ -101,7 +97,7 @@ class RailboardConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors=errors,
             description_placeholders={
                 "station_code_url": "https://www.nationalrail.co.uk/stations/",
-                "api_url": "https://www.realtimetrains.co.uk/about/developer/",
+                "api_url": "https://api-portal.rtt.io",
             }
         )
 

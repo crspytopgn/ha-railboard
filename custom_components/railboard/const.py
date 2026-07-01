@@ -14,7 +14,7 @@ KIND_BUS = "bus"
 # Configuration
 CONF_STATION_CODE = "station_code"
 CONF_STATION_NAME = "station_name"
-CONF_RTT_USERNAME = "rtt_username"
+CONF_RTT_REFRESH_TOKEN = "refresh_token"
 CONF_SHOW_ARRIVALS = "show_arrivals"
 CONF_MAX_RESULTS = "max_results"
 CONF_SHOW_PLATFORMS = "show_platforms"
