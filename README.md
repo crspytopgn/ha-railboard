@@ -18,6 +18,9 @@ A real-time UK train departure/arrival board and TfL bus stop tracker for Home A
 ✅ **Disruption sensor** – a binary sensor that turns on when anything at the station is delayed or cancelled
 ✅ **Leave-now sensor** – a binary sensor that turns on once it's time to head to the station
 ✅ **Service detail lookup** – an on-demand service call for full per-stop calling-point detail on any train
+✅ **Tracked-service sensor** – pin to one specific scheduled train (e.g. "the 08:03 to Victoria") and follow its live status day to day
+✅ **Punctuality sensor** – a rolling today's on-time percentage/average delay, computed locally from data already being fetched
+✅ **Coach count, request-stop, and schedule-variation flags** – exposed on every departure/arrival, no extra calls needed
 ✅ **TfL bus stop tracking** – search for any bus stop, follow specific routes, and see the next few buses due
 ✅ Configurable entirely through the Home Assistant UI
 ✅ Uses the Realtime Trains API and TfL Unified API for reliable data
@@ -90,7 +93,10 @@ After adding the integration, click **Configure** on the entry to set:
 - **Show next train sensor** – adds the next-catchable-train sensor and the "leave now" binary sensor
 - **Show disruption binary sensor**
 - **Walking time to station (minutes)** – the next train sensor ignores anything departing sooner than this
-- **Only show trains to this destination (optional)** – matches against the destination name or any calling point (e.g. "Reading" also matches trains that call at Reading en route)
+- **Only show next-train results for trains calling at this station code (optional)** – e.g. `RDG` for Reading. This uses RTT's own server-side filtering, so it correctly matches trains that call at that station en route, not just an exact final destination. Note this takes a station **code**, not a free-text name.
+- **Show punctuality sensor**
+- **Track a specific scheduled departure time (optional)** – e.g. `08:03`, to add a sensor that follows that specific recurring service
+- **...to this destination (optional)** – only needed if more than one service departs at the tracked time, to disambiguate which one to follow
 
 Bus stop entries have their own options:
 
@@ -105,6 +111,8 @@ Bus stop entries have their own options:
 - `sensor.railboard_next_train_<station_code>` – state is minutes until the next catchable train departs, honouring the walking-time and destination filters (only created if "Show next train sensor" is enabled)
 - `binary_sensor.railboard_disruption_<station_code>` – on if any departure at the station is currently delayed or cancelled
 - `binary_sensor.railboard_leave_now_<station_code>` – on once the next catchable train is due within your configured walking time; use a state trigger on this entity for a "time to leave" automation
+- `sensor.railboard_punctuality_<station_code>` – state is today's rolling on-time percentage; attributes include `on_time_count`, `delayed_count`, `cancelled_count`, and `average_delay_minutes`. Resets at local midnight. Computed purely from data already being polled, no extra API calls
+- `sensor.railboard_tracked_<station_code>` – state is the current status ("On time"/"Delayed X min"/"Cancelled") of the one specific service you're tracking (only created if "Track a specific scheduled departure time" is set)
 - `sensor.railboard_bus_<stop_id>` – state is minutes until the next followed bus arrives; the `arrivals` attribute lists the next few buses (line, destination, minutes, platform/stop letter) across your followed routes
 - `binary_sensor.railboard_bus_disruption_<stop_id>` – on if any followed route currently has a reported disruption (checked by TfL's line status, so it still catches a fully suspended route even when it has no arrivals showing)
 - `binary_sensor.railboard_bus_leave_now_<stop_id>` – on once the next bus is due within your configured walking time
@@ -112,6 +120,8 @@ Bus stop entries have their own options:
 Each departures/arrivals sensor's state is the number of upcoming services. The full list of services — destination/origin, scheduled and expected times, platform, operator, delay/cancellation status (including reason text when RTT provides one) — is available as attributes for use in dashboards, templates, and automations.
 
 Each departure also includes `arrival_time` (expected arrival at the destination, HH:MM) and `duration_minutes` (journey time), both sourced directly from RTT's response for that station - no extra API calls needed. `calling_at` (the names of intermediate stops) is **not** populated automatically: RTT's compact departure-board query doesn't include intermediate stops, only the origin/destination pair, so it's always `[]` in the regular sensor data. For a specific train's full stop-by-stop list, use the `railboard.get_service_detail` action below.
+
+Every departure/arrival also carries `vehicle_count` (number of passenger coaches), `is_request_stop` (train only calls here if requested), `schedule_type` (RTT's STP indicator - `WTT` is the normal working timetable, anything else is a short-term variation), `is_schedule_variation` (derived boolean for the above), and `runs_as_required` (this service only runs if required that day). `schedule_type`/`is_schedule_variation` require RTT's "detailed" mode, which not every token is entitled to - if yours isn't, these will just come back as `null`/`false` rather than erroring.
 
 ## Service: `railboard.get_service_detail`
 

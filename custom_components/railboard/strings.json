@@ -65,8 +65,11 @@
           "show_next_train": "Show next train sensor",
           "show_disruption_sensor": "Show disruption binary sensor",
           "walking_time": "Walking time to station/stop (minutes)",
-          "filter_destination": "Only show trains to this destination (optional)",
-          "max_bus_results": "Maximum number of buses to show"
+          "filter_destination": "Only show next-train results for trains calling at this station code (optional, e.g. RDG)",
+          "max_bus_results": "Maximum number of buses to show",
+          "show_punctuality_sensor": "Show punctuality sensor",
+          "tracked_time": "Track a specific scheduled departure time (optional, e.g. 08:03)",
+          "tracked_destination": "...to this destination (optional, disambiguates same-time departures)"
         }
       }
     }

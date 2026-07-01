@@ -14,15 +14,21 @@ from .const import (
     CONF_SHOW_NEXT_TRAIN,
     CONF_SHOW_OPERATOR_BADGE,
     CONF_SHOW_PLATFORMS,
+    CONF_SHOW_PUNCTUALITY_SENSOR,
     CONF_SHOW_STATUS,
     CONF_STATION_CODE,
     CONF_STATION_NAME,
+    CONF_TRACKED_DESTINATION,
+    CONF_TRACKED_TIME,
     DEFAULT_SHOW_ARRIVALS,
     DEFAULT_SHOW_CALLING_POINTS,
     DEFAULT_SHOW_NEXT_TRAIN,
     DEFAULT_SHOW_OPERATOR_BADGE,
     DEFAULT_SHOW_PLATFORMS,
+    DEFAULT_SHOW_PUNCTUALITY_SENSOR,
     DEFAULT_SHOW_STATUS,
+    DEFAULT_TRACKED_DESTINATION,
+    DEFAULT_TRACKED_TIME,
     DOMAIN,
     KIND_BUS,
 )
@@ -59,6 +65,9 @@ async def async_setup_entry(
     show_status = options.get(CONF_SHOW_STATUS, DEFAULT_SHOW_STATUS)
     show_calling_points = options.get(CONF_SHOW_CALLING_POINTS, DEFAULT_SHOW_CALLING_POINTS)
     show_operator_badge = options.get(CONF_SHOW_OPERATOR_BADGE, DEFAULT_SHOW_OPERATOR_BADGE)
+    show_punctuality = options.get(CONF_SHOW_PUNCTUALITY_SENSOR, DEFAULT_SHOW_PUNCTUALITY_SENSOR)
+    tracked_time = options.get(CONF_TRACKED_TIME, DEFAULT_TRACKED_TIME)
+    tracked_destination = options.get(CONF_TRACKED_DESTINATION, DEFAULT_TRACKED_DESTINATION)
 
     # Create sensors
     sensors = [
@@ -78,6 +87,14 @@ async def async_setup_entry(
 
     if show_next_train:
         sensors.append(RailboardNextTrainSensor(coordinator, station_code, station_name))
+
+    if show_punctuality:
+        sensors.append(RailboardPunctualitySensor(coordinator, station_code, station_name))
+
+    if tracked_time:
+        sensors.append(
+            RailboardTrackedServiceSensor(coordinator, station_code, station_name, tracked_time, tracked_destination)
+        )
 
     async_add_entities(sensors)
     _LOGGER.info(f"Railboard sensors added for {station_name} ({station_code})")
@@ -227,6 +244,83 @@ class RailboardNextTrainSensor(CoordinatorEntity):
         next_train = self._next_train
         if next_train is not None:
             attrs.update(next_train)
+        return attrs
+
+
+class RailboardPunctualitySensor(CoordinatorEntity):
+    """Sensor tracking a rolling on-time percentage for the station's departures today."""
+
+    _attr_icon = "mdi:chart-line"
+    _attr_unit_of_measurement = "%"
+    _attr_should_poll = False
+
+    def __init__(self, coordinator, station_code, station_name):
+        """Initialise the sensor."""
+        super().__init__(coordinator)
+        self._station_code = station_code
+        self._station_name = station_name
+
+        self._attr_name = f"Railboard Punctuality {station_name}"
+        self._attr_unique_id = f"railboard_punctuality_{station_code.lower()}"
+
+    @property
+    def _stats(self):
+        return (self.coordinator.data or {}).get("punctuality", {})
+
+    @property
+    def state(self):
+        """Return today's rolling on-time percentage."""
+        return self._stats.get("on_time_percent")
+
+    @property
+    def extra_state_attributes(self):
+        """Return the state attributes."""
+        return {
+            "station_code": self._station_code,
+            "station_name": self._station_name,
+            **self._stats,
+        }
+
+
+class RailboardTrackedServiceSensor(CoordinatorEntity):
+    """Sensor following one specific scheduled service (by time and destination) across polls."""
+
+    _attr_icon = "mdi:train-car"
+    _attr_should_poll = False
+
+    def __init__(self, coordinator, station_code, station_name, tracked_time, tracked_destination):
+        """Initialise the sensor."""
+        super().__init__(coordinator)
+        self._station_code = station_code
+        self._station_name = station_name
+        self._tracked_time = tracked_time
+        self._tracked_destination = tracked_destination
+
+        self._attr_name = f"Railboard Tracked Service {station_name}"
+        self._attr_unique_id = f"railboard_tracked_{station_code.lower()}"
+
+    @property
+    def _tracked(self):
+        return (self.coordinator.data or {}).get("tracked_service")
+
+    @property
+    def state(self):
+        """Return the tracked service's current status (On time/Delayed X min/Cancelled)."""
+        tracked = self._tracked
+        return tracked.get("status") if tracked else None
+
+    @property
+    def extra_state_attributes(self):
+        """Return the state attributes."""
+        attrs = {
+            "station_code": self._station_code,
+            "station_name": self._station_name,
+            "tracked_time": self._tracked_time,
+            "tracked_destination": self._tracked_destination,
+        }
+        tracked = self._tracked
+        if tracked is not None:
+            attrs.update(tracked)
         return attrs
 
 

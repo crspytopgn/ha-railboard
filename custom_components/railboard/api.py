@@ -30,15 +30,20 @@ class RealtimeTrainsClient:
         self.refresh_token = refresh_token
         self._access_token = None
         self._access_token_expiry = None
+        self._detailed_supported = True
 
-    def get_board(self, station_code: str, num_results: int = 15) -> dict:
+    def get_board(self, station_code: str, num_results: int = 15, filter_to: str = None) -> dict:
         """Fetch departures and arrivals at a station from a single query.
 
         Both lists come from one API call: every service at the station carries
         its own arrival and/or departure activity, so there's no need for two
         separate requests the way the classic Pull API required.
+
+        filter_to, if given, is a station code (short or long) - only services
+        that subsequently call there are returned, using the API's own native
+        filtering rather than string-matching a destination name client-side.
         """
-        services = self._get_location_services(station_code)
+        services = self._get_location_services(station_code, filter_to)
 
         departures = []
         arrivals = []
@@ -126,9 +131,24 @@ class RealtimeTrainsClient:
             "calling_points": calling_points,
         }
 
-    def _get_location_services(self, station_code: str) -> list:
+    def _get_location_services(self, station_code: str, filter_to: str = None) -> list:
         """Fetch the raw list of services at a station in the current time window."""
-        data = self._get("/gb-nr/location", {"code": station_code, "timeWindow": 120})
+        params = {"code": station_code, "timeWindow": 120}
+        if filter_to:
+            params["filterTo"] = filter_to
+
+        if self._detailed_supported:
+            try:
+                data = self._get("/gb-nr/location", {**params, "detailed": "true"})
+                return data.get("services") or []
+            except RailboardApiError:
+                # Detailed mode (needed for stpIndicator) may not be entitled on this
+                # token - fall back permanently for the rest of this client's lifetime
+                # rather than doubling every future request trying it again.
+                _LOGGER.debug("Detailed mode unavailable for this token; falling back to standard mode")
+                self._detailed_supported = False
+
+        data = self._get("/gb-nr/location", params)
         return data.get("services") or []
 
     def _parse_service(self, item: dict, kind: str):
@@ -167,8 +187,11 @@ class RealtimeTrainsClient:
             (r.get("longText") or r.get("shortText", "") for r in reasons if r.get("type") == "DELAY"), ""
         )
 
-        platform_data = (item.get("locationMetadata") or {}).get("platform") or {}
+        location_metadata = item.get("locationMetadata") or {}
+        platform_data = location_metadata.get("platform") or {}
         platform = platform_data.get("actual") or platform_data.get("planned") or "TBC"
+
+        stp_indicator = schedule_metadata.get("stpIndicator")
 
         result = {
             "network": self._classify_network(operator_name, operator_code),
@@ -182,6 +205,14 @@ class RealtimeTrainsClient:
             "status": self._determine_status(is_cancelled, is_delayed, delay_minutes),
             "cancel_reason": cancel_reason if is_cancelled else "",
             "delay_reason": delay_reason if is_delayed else "",
+            "vehicle_count": location_metadata.get("numberOfVehicles"),
+            "is_request_stop": bool(location_metadata.get("isRequestStop", False)),
+            # schedule_type/is_schedule_variation are only populated if this token
+            # is entitled to "detailed" mode (see _get_location_services); WTT means
+            # the normal working timetable, anything else is a short-term variation.
+            "schedule_type": stp_indicator,
+            "is_schedule_variation": bool(stp_indicator and stp_indicator != "WTT"),
+            "runs_as_required": bool(schedule_metadata.get("runsAsRequired", False)),
         }
 
         if kind == "departure":

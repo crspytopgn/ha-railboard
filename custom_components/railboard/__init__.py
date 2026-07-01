@@ -30,12 +30,16 @@ from .const import (
     CONF_SHOW_NEXT_TRAIN,
     CONF_STATION_CODE,
     CONF_TFL_APP_KEY,
+    CONF_TRACKED_DESTINATION,
+    CONF_TRACKED_TIME,
     CONF_WALKING_TIME,
     DEFAULT_FILTER_DESTINATION,
     DEFAULT_MAX_BUS_RESULTS,
     DEFAULT_MAX_RESULTS,
     DEFAULT_SHOW_ARRIVALS,
     DEFAULT_SHOW_NEXT_TRAIN,
+    DEFAULT_TRACKED_DESTINATION,
+    DEFAULT_TRACKED_TIME,
     DEFAULT_WALKING_TIME,
     DOMAIN,
     KIND_BUS,
@@ -75,25 +79,16 @@ def _minutes_until(expected: str, now: datetime):
     return int((candidate - now).total_seconds() // 60)
 
 
-def _matches_destination(departure: dict, filter_text: str) -> bool:
-    """Return True if a departure matches a configured destination filter (or none is set)."""
-    needle = (filter_text or "").strip().lower()
-    if not needle:
-        return True
+def _select_next_train(departures: list, walking_time: int, now: datetime):
+    """Return the earliest departure that's still catchable.
 
-    if needle in departure.get("destination", "").lower():
-        return True
-
-    return any(needle in point.lower() for point in departure.get("calling_at", []))
-
-
-def _select_next_train(departures: list, walking_time: int, filter_destination: str, now: datetime):
-    """Return the earliest departure that's still catchable and matches the destination filter."""
+    Destination filtering (if configured) is expected to already have been
+    applied server-side via the API's own filterTo parameter - see
+    _async_setup_rail_entry - so departures here don't need re-filtering.
+    """
     for departure in departures:
         minutes = _minutes_until(departure.get("expected"), now)
         if minutes is None or minutes < walking_time:
-            continue
-        if not _matches_destination(departure, filter_destination):
             continue
 
         next_train = dict(departure)
@@ -101,6 +96,91 @@ def _select_next_train(departures: list, walking_time: int, filter_destination: 
         return next_train
 
     return None
+
+
+def _select_tracked_service(departures: list, tracked_time: str, tracked_destination: str, now: datetime):
+    """Return the departure matching a specific scheduled time (and optional destination).
+
+    Unlike next_train, this pins to one specific recurring service (e.g. "the
+    08:03 to Victoria") rather than the earliest catchable one, so a regular
+    commuter can follow the same train's live status day to day.
+    """
+    needle = (tracked_destination or "").strip().lower()
+
+    for departure in departures:
+        if departure.get("scheduled") != tracked_time:
+            continue
+        if needle and needle not in departure.get("destination", "").lower():
+            continue
+
+        tracked = dict(departure)
+        tracked["minutes_until_departure"] = _minutes_until(departure.get("expected"), now)
+        return tracked
+
+    return None
+
+
+class _PunctualityTracker:
+    """Accumulates a rolling on-time/delay tally for a station's departures.
+
+    Every poll, the current visible departures window is snapshotted by
+    service_uid. When a service_uid drops out of that window (i.e. it has now
+    departed), its last known status is folded into the running totals for the
+    day. This gives a real "how has today gone" stat from data already being
+    fetched anyway, without any extra API calls. The tally resets at the start
+    of each local day.
+    """
+
+    def __init__(self):
+        self._day = None
+        self._in_flight = {}
+        self._on_time = 0
+        self._delayed = 0
+        self._cancelled = 0
+        self._total_delay_minutes = 0
+
+    def update(self, departures: list, today: str) -> dict:
+        if today != self._day:
+            self._day = today
+            self._in_flight = {}
+            self._on_time = 0
+            self._delayed = 0
+            self._cancelled = 0
+            self._total_delay_minutes = 0
+
+        current_uids = set()
+        for departure in departures:
+            uid = departure.get("service_uid")
+            if not uid:
+                continue
+            current_uids.add(uid)
+            self._in_flight[uid] = (departure.get("is_cancelled", False), departure.get("delay_minutes") or 0)
+
+        for uid in set(self._in_flight) - current_uids:
+            is_cancelled, delay_minutes = self._in_flight.pop(uid)
+            if is_cancelled:
+                self._cancelled += 1
+            elif delay_minutes > 0:
+                self._delayed += 1
+                self._total_delay_minutes += delay_minutes
+            else:
+                self._on_time += 1
+
+        return self.stats
+
+    @property
+    def stats(self) -> dict:
+        total = self._on_time + self._delayed + self._cancelled
+        return {
+            "total_observed": total,
+            "on_time_count": self._on_time,
+            "delayed_count": self._delayed,
+            "cancelled_count": self._cancelled,
+            "on_time_percent": round((self._on_time / total) * 100, 1) if total else None,
+            "average_delay_minutes": (
+                round(self._total_delay_minutes / self._delayed, 1) if self._delayed else 0
+            ),
+        }
 
 
 async def async_setup(hass: HomeAssistant, config: dict):
@@ -136,6 +216,7 @@ async def _async_setup_rail_entry(hass: HomeAssistant, entry: ConfigEntry):
     _LOGGER.info("Setting up Railboard for %s", station_name)
 
     client = RealtimeTrainsClient(refresh_token)
+    punctuality = _PunctualityTracker()
 
     async def _async_update_data():
         """Fetch the latest departures/arrivals (one call covers both) for this entry."""
@@ -143,6 +224,9 @@ async def _async_setup_rail_entry(hass: HomeAssistant, entry: ConfigEntry):
         max_results = entry.options.get(CONF_MAX_RESULTS, DEFAULT_MAX_RESULTS)
         walking_time = entry.options.get(CONF_WALKING_TIME, DEFAULT_WALKING_TIME)
         filter_destination = entry.options.get(CONF_FILTER_DESTINATION, DEFAULT_FILTER_DESTINATION)
+        tracked_time = entry.options.get(CONF_TRACKED_TIME, DEFAULT_TRACKED_TIME)
+        tracked_destination = entry.options.get(CONF_TRACKED_DESTINATION, DEFAULT_TRACKED_DESTINATION)
+        now = dt_util.now()
 
         def _fetch():
             board = client.get_board(station_code, max_results)
@@ -153,13 +237,25 @@ async def _async_setup_rail_entry(hass: HomeAssistant, entry: ConfigEntry):
                 data["arrivals"] = board["arrivals"]
 
             if show_next_train:
-                data["next_train"] = _select_next_train(
-                    departures, walking_time, filter_destination, dt_util.now()
+                # Ask the API to filter server-side when a destination is configured
+                # (catches genuine "via" stations, not just an exact destination-name
+                # match) rather than string-matching client-side.
+                next_train_candidates = departures
+                if filter_destination:
+                    filtered_board = client.get_board(station_code, max_results, filter_to=filter_destination)
+                    next_train_candidates = filtered_board["departures"]
+                data["next_train"] = _select_next_train(next_train_candidates, walking_time, now)
+
+            if tracked_time:
+                data["tracked_service"] = _select_tracked_service(
+                    departures, tracked_time, tracked_destination, now
                 )
 
             data["disrupted"] = [
                 d for d in departures if d.get("is_cancelled") or d.get("is_delayed")
             ]
+
+            data["punctuality"] = punctuality.update(departures, now.strftime("%Y-%m-%d"))
 
             return data
 

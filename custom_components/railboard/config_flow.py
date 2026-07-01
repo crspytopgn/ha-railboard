@@ -19,12 +19,18 @@ from .const import (
     CONF_RTT_REFRESH_TOKEN,
     CONF_SHOW_DISRUPTION_SENSOR,
     CONF_SHOW_NEXT_TRAIN,
+    CONF_SHOW_PUNCTUALITY_SENSOR,
     CONF_TFL_APP_KEY,
+    CONF_TRACKED_DESTINATION,
+    CONF_TRACKED_TIME,
     CONF_WALKING_TIME,
     DEFAULT_FILTER_DESTINATION,
     DEFAULT_MAX_BUS_RESULTS,
     DEFAULT_SHOW_DISRUPTION_SENSOR,
     DEFAULT_SHOW_NEXT_TRAIN,
+    DEFAULT_SHOW_PUNCTUALITY_SENSOR,
+    DEFAULT_TRACKED_DESTINATION,
+    DEFAULT_TRACKED_TIME,
     DEFAULT_WALKING_TIME,
     DOMAIN,
     KIND_BUS,
@@ -259,6 +265,20 @@ class RailboardOptionsFlowHandler(config_entries.OptionsFlow):
                 vol.Optional(
                     CONF_FILTER_DESTINATION,
                     default=self.config_entry.options.get(CONF_FILTER_DESTINATION, DEFAULT_FILTER_DESTINATION)
+                ): str,
+                vol.Optional(
+                    CONF_SHOW_PUNCTUALITY_SENSOR,
+                    default=self.config_entry.options.get(
+                        CONF_SHOW_PUNCTUALITY_SENSOR, DEFAULT_SHOW_PUNCTUALITY_SENSOR
+                    )
+                ): bool,
+                vol.Optional(
+                    CONF_TRACKED_TIME,
+                    default=self.config_entry.options.get(CONF_TRACKED_TIME, DEFAULT_TRACKED_TIME)
+                ): str,
+                vol.Optional(
+                    CONF_TRACKED_DESTINATION,
+                    default=self.config_entry.options.get(CONF_TRACKED_DESTINATION, DEFAULT_TRACKED_DESTINATION)
                 ): str,
             })
         )
