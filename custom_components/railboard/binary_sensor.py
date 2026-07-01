@@ -7,6 +7,8 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
+    CONF_BUS_STOP_ID,
+    CONF_BUS_STOP_NAME,
     CONF_SHOW_DISRUPTION_SENSOR,
     CONF_SHOW_NEXT_TRAIN,
     CONF_STATION_CODE,
@@ -29,16 +31,25 @@ async def async_setup_entry(
 ):
     """Set up Railboard binary sensors based on a config entry."""
     entry_data = hass.data[DOMAIN][entry.entry_id]
+    coordinator = entry_data["coordinator"]
+    options = entry.options
 
     if entry_data.get("kind") == KIND_BUS:
-        # Bus stops don't have rail-specific disruption/leave-now sensors (yet).
-        return
+        stop_id = entry.data[CONF_BUS_STOP_ID]
+        stop_name = entry.data.get(CONF_BUS_STOP_NAME, stop_id)
+        entities = []
 
-    coordinator = entry_data["coordinator"]
+        if options.get(CONF_SHOW_DISRUPTION_SENSOR, DEFAULT_SHOW_DISRUPTION_SENSOR):
+            entities.append(RailboardBusDisruptionSensor(coordinator, stop_id, stop_name))
+
+        walking_time = options.get(CONF_WALKING_TIME, DEFAULT_WALKING_TIME)
+        entities.append(RailboardBusLeaveNowSensor(coordinator, stop_id, stop_name, walking_time))
+
+        async_add_entities(entities)
+        return
 
     station_code = entry.data[CONF_STATION_CODE]
     station_name = entry.data.get(CONF_STATION_NAME, station_code)
-    options = entry.options
 
     entities = []
 
@@ -128,4 +139,81 @@ class RailboardLeaveNowSensor(CoordinatorEntity):
             "station_name": self._station_name,
             "walking_time": self._walking_time,
             "minutes_until_departure": next_train.get("minutes_until_departure"),
+        }
+
+
+class RailboardBusDisruptionSensor(CoordinatorEntity):
+    """Binary sensor that is on when any followed bus route has a reported disruption."""
+
+    _attr_icon = "mdi:alert"
+    _attr_should_poll = False
+
+    def __init__(self, coordinator, stop_id, stop_name):
+        """Initialise the sensor."""
+        super().__init__(coordinator)
+        self._stop_id = stop_id
+        self._stop_name = stop_name
+
+        self._attr_name = f"Railboard Bus Disruption {stop_name}"
+        self._attr_unique_id = f"railboard_bus_disruption_{stop_id.lower()}"
+
+    @property
+    def _disrupted(self):
+        return (self.coordinator.data or {}).get("disrupted", [])
+
+    @property
+    def is_on(self):
+        """Return True if any followed route currently has a reported disruption."""
+        return len(self._disrupted) > 0
+
+    @property
+    def extra_state_attributes(self):
+        """Return the state attributes."""
+        disrupted = self._disrupted
+        return {
+            "stop_id": self._stop_id,
+            "stop_name": self._stop_name,
+            "disrupted_count": len(disrupted),
+            "disrupted_lines": disrupted,
+        }
+
+
+class RailboardBusLeaveNowSensor(CoordinatorEntity):
+    """Binary sensor that turns on once it's time to leave to catch the next bus."""
+
+    _attr_icon = "mdi:shoe-print"
+    _attr_should_poll = False
+
+    def __init__(self, coordinator, stop_id, stop_name, walking_time):
+        """Initialise the sensor."""
+        super().__init__(coordinator)
+        self._stop_id = stop_id
+        self._stop_name = stop_name
+        self._walking_time = walking_time
+
+        self._attr_name = f"Railboard Bus Leave Now {stop_name}"
+        self._attr_unique_id = f"railboard_bus_leave_now_{stop_id.lower()}"
+
+    @property
+    def _next_bus(self):
+        arrivals = (self.coordinator.data or {}).get("arrivals", [])
+        return arrivals[0] if arrivals else None
+
+    @property
+    def is_on(self):
+        """Return True once the next bus is due within the walking time."""
+        next_bus = self._next_bus
+        if next_bus is None:
+            return False
+        return next_bus["minutes"] <= self._walking_time
+
+    @property
+    def extra_state_attributes(self):
+        """Return the state attributes."""
+        next_bus = self._next_bus or {}
+        return {
+            "stop_id": self._stop_id,
+            "stop_name": self._stop_name,
+            "walking_time": self._walking_time,
+            "minutes_until_arrival": next_bus.get("minutes"),
         }

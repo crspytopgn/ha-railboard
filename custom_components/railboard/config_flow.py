@@ -9,6 +9,7 @@ from homeassistant.core import callback
 
 from .api import RealtimeTrainsClient
 from .const import (
+    CONF_BUS_ALL_ROUTES,
     CONF_BUS_ROUTES,
     CONF_BUS_STOP_ID,
     CONF_BUS_STOP_NAME,
@@ -172,6 +173,7 @@ class RailboardConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     CONF_BUS_STOP_ID: self._bus_stop_id,
                     CONF_BUS_STOP_NAME: self._bus_stop_name,
                     CONF_BUS_ROUTES: user_input.get(CONF_BUS_ROUTES, []),
+                    CONF_BUS_ALL_ROUTES: self._bus_available_routes,
                     CONF_TFL_APP_KEY: self._bus_app_key,
                 },
             )
@@ -277,5 +279,15 @@ class RailboardOptionsFlowHandler(config_entries.OptionsFlow):
                     CONF_MAX_BUS_RESULTS,
                     default=self.config_entry.options.get(CONF_MAX_BUS_RESULTS, DEFAULT_MAX_BUS_RESULTS)
                 ): vol.All(int, vol.Range(min=1, max=20)),
+                vol.Optional(
+                    CONF_SHOW_DISRUPTION_SENSOR,
+                    default=self.config_entry.options.get(
+                        CONF_SHOW_DISRUPTION_SENSOR, DEFAULT_SHOW_DISRUPTION_SENSOR
+                    )
+                ): bool,
+                vol.Optional(
+                    CONF_WALKING_TIME,
+                    default=self.config_entry.options.get(CONF_WALKING_TIME, DEFAULT_WALKING_TIME)
+                ): vol.All(int, vol.Range(min=0, max=60)),
             })
         )

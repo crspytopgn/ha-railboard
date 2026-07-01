@@ -67,6 +67,7 @@ class TflBusClient:
                 arrivals.append(
                     {
                         "line": line_name,
+                        "line_id": prediction.get("lineId", line_name.strip().lower()),
                         "destination": prediction.get("destinationName", "Unknown"),
                         "towards": prediction.get("towards", ""),
                         "platform": prediction.get("platformName", ""),
@@ -82,3 +83,35 @@ class TflBusClient:
 
         arrivals.sort(key=lambda arrival: arrival["time_to_station"])
         return arrivals[:num_results]
+
+    def get_line_status(self, line_ids: list) -> list:
+        """Return current disruptions for the given bus line ids (empty if all running normally).
+
+        line_ids are TfL line ids (for buses this is the route number, lower-cased,
+        e.g. "358", "n3"), not the human-readable route name.
+        """
+        if not line_ids:
+            return []
+
+        ids = ",".join(sorted({line_id for line_id in line_ids if line_id}))
+        if not ids:
+            return []
+
+        data = self._get(f"/Line/{ids}/Status")
+
+        disruptions = []
+        for line in data:
+            line_name = line.get("name", line.get("id", "Unknown"))
+            for status in line.get("lineStatuses", []):
+                description = status.get("statusSeverityDescription", "Unknown")
+                if description.lower() == "good service":
+                    continue
+                disruptions.append(
+                    {
+                        "line": line_name,
+                        "status": description,
+                        "reason": status.get("reason", ""),
+                    }
+                )
+
+        return disruptions

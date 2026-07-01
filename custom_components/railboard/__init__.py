@@ -17,6 +17,7 @@ from .const import (
     ATTR_RUN_DATE,
     ATTR_SERVICE_UID,
     BUS_SCAN_INTERVAL,
+    CONF_BUS_ALL_ROUTES,
     CONF_BUS_ROUTES,
     CONF_BUS_STOP_ID,
     CONF_BUS_STOP_NAME,
@@ -191,18 +192,28 @@ async def _async_setup_bus_entry(hass: HomeAssistant, entry: ConfigEntry):
     stop_id = entry.data[CONF_BUS_STOP_ID]
     stop_name = entry.data.get(CONF_BUS_STOP_NAME, stop_id)
     routes = entry.data.get(CONF_BUS_ROUTES) or []
+    all_routes = entry.data.get(CONF_BUS_ALL_ROUTES) or routes
     app_key = entry.data.get(CONF_TFL_APP_KEY) or None
 
     _LOGGER.info("Setting up Railboard bus stop %s", stop_name)
 
     client = TflBusClient(app_key)
 
+    # Followed routes if the user picked specific ones, otherwise every route
+    # known to serve the stop - either way, checked directly by line id rather
+    # than derived from live arrivals, so a fully-suspended route is still
+    # reported even if it has no arrivals showing at all.
+    disruption_line_ids = sorted({route.strip().lower() for route in (routes or all_routes) if route})
+
     async def _async_update_data():
-        """Fetch the next bus arrivals for this stop."""
+        """Fetch the next bus arrivals (and any disruptions) for this stop."""
         max_results = entry.options.get(CONF_MAX_BUS_RESULTS, DEFAULT_MAX_BUS_RESULTS)
 
         def _fetch():
-            return {"arrivals": client.get_arrivals(stop_id, routes, max_results)}
+            return {
+                "arrivals": client.get_arrivals(stop_id, routes, max_results),
+                "disrupted": client.get_line_status(disruption_line_ids),
+            }
 
         try:
             return await hass.async_add_executor_job(_fetch)

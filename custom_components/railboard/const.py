@@ -30,6 +30,7 @@ CONF_FILTER_DESTINATION = "filter_destination"
 CONF_BUS_STOP_ID = "stop_id"
 CONF_BUS_STOP_NAME = "stop_name"
 CONF_BUS_ROUTES = "routes"
+CONF_BUS_ALL_ROUTES = "all_routes"
 CONF_TFL_APP_KEY = "tfl_app_key"
 CONF_MAX_BUS_RESULTS = "max_bus_results"
 

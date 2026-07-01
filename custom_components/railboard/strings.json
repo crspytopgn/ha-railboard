@@ -65,7 +65,7 @@
           "show_operator_badge": "Show operator badges (SN, LO, etc.)",
           "show_next_train": "Show next train sensor",
           "show_disruption_sensor": "Show disruption binary sensor",
-          "walking_time": "Walking time to station (minutes)",
+          "walking_time": "Walking time to station/stop (minutes)",
           "filter_destination": "Only show trains to this destination (optional)",
           "max_bus_results": "Maximum number of buses to show"
         }

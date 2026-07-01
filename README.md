@@ -92,9 +92,11 @@ After adding the integration, click **Configure** on the entry to set:
 - **Walking time to station (minutes)** – the next train sensor ignores anything departing sooner than this
 - **Only show trains to this destination (optional)** – matches against the destination name or any calling point (e.g. "Reading" also matches trains that call at Reading en route)
 
-Bus stop entries have their own, simpler options:
+Bus stop entries have their own options:
 
 - **Maximum number of buses to show**
+- **Show disruption binary sensor**
+- **Walking time to station/stop (minutes)** – used by the bus "leave now" sensor
 
 ## Sensors
 
@@ -104,6 +106,8 @@ Bus stop entries have their own, simpler options:
 - `binary_sensor.railboard_disruption_<station_code>` – on if any departure at the station is currently delayed or cancelled
 - `binary_sensor.railboard_leave_now_<station_code>` – on once the next catchable train is due within your configured walking time; use a state trigger on this entity for a "time to leave" automation
 - `sensor.railboard_bus_<stop_id>` – state is minutes until the next followed bus arrives; the `arrivals` attribute lists the next few buses (line, destination, minutes, platform/stop letter) across your followed routes
+- `binary_sensor.railboard_bus_disruption_<stop_id>` – on if any followed route currently has a reported disruption (checked by TfL's line status, so it still catches a fully suspended route even when it has no arrivals showing)
+- `binary_sensor.railboard_bus_leave_now_<stop_id>` – on once the next bus is due within your configured walking time
 
 Each departures/arrivals sensor's state is the number of upcoming services. The full list of services — destination/origin, scheduled and expected times, platform, operator, delay/cancellation status (including reason text when RTT provides one), and calling points — is available as attributes for use in dashboards, templates, and automations.
 
