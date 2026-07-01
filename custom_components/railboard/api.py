@@ -159,9 +159,13 @@ class RealtimeTrainsClient:
         }
 
         if kind == "departure":
+            calling_points = self._get_calling_points(service)
+
             result["destination"] = point_name
             result["service_uid"] = service.get("serviceUid", "")
-            result["calling_at"] = self._get_calling_points(service)
+            result["calling_at"] = [point["name"] for point in calling_points]
+            result["arrival_time"] = self._destination_arrival(calling_points, point_name)
+            result["duration_minutes"] = self._calculate_duration(result["expected"], result["arrival_time"])
         else:
             result["origin"] = point_name
 
@@ -208,8 +212,66 @@ class RealtimeTrainsClient:
             return f"Delayed {delay_minutes} min"
         return "On time"
 
+    def _get_calling_points(self, service: dict) -> list:
+        """Extract each subsequent calling point, with its own expected arrival time.
+
+        RTT nests these under one or more "association" entries (used when a service
+        splits/joins along its route), each holding the calling points for that portion
+        of the journey under a "callingPoint" list - so each entry here is NOT itself a
+        calling point. A flatter shape is tolerated too in case that assumption is wrong
+        for some service types.
+        """
+        calling_points = []
+
+        for entry in service.get("locationDetail", {}).get("subsequentCallingPoints", []):
+            points = entry.get("callingPoint") or entry.get("callingPoints") or [entry]
+            for point in points:
+                name = point.get("description", "")
+                if not name:
+                    continue
+
+                scheduled_arrival = point.get("gbttBookedArrival") or point.get("realtimeArrival") or ""
+                expected_arrival = point.get("realtimeArrival") or scheduled_arrival
+
+                calling_points.append(
+                    {
+                        "name": name,
+                        "crs": point.get("crs", ""),
+                        "expected_arrival": self._format_time(expected_arrival),
+                    }
+                )
+
+        return calling_points
+
     @staticmethod
-    def _get_calling_points(service: dict) -> list:
-        """Extract calling points from a departure service."""
-        subsequent = service.get("locationDetail", {}).get("subsequentCallingPoints", [])
-        return [point.get("description", "") for point in subsequent if point.get("description")]
+    def _destination_arrival(calling_points: list, destination_name: str) -> str:
+        """Return the expected arrival time (HH:MM) at the destination, if known."""
+        if not calling_points:
+            return ""
+
+        needle = (destination_name or "").strip().lower()
+        for point in calling_points:
+            if point["name"].strip().lower() == needle:
+                return point["expected_arrival"]
+
+        # No exact name match (e.g. differing punctuation) - the last calling
+        # point is still very likely the destination itself.
+        return calling_points[-1]["expected_arrival"]
+
+    @staticmethod
+    def _calculate_duration(departure_time: str, arrival_time: str):
+        """Return whole minutes from a formatted HH:MM departure to a formatted HH:MM arrival."""
+        if not departure_time or not arrival_time or ":" not in departure_time or ":" not in arrival_time:
+            return None
+
+        try:
+            dep_hour, dep_minute = (int(part) for part in departure_time.split(":"))
+            arr_hour, arr_minute = (int(part) for part in arrival_time.split(":"))
+        except ValueError:
+            return None
+
+        duration = (arr_hour * 60 + arr_minute) - (dep_hour * 60 + dep_minute)
+        if duration < 0:
+            # Arrival rolled over past midnight relative to departure.
+            duration += 24 * 60
+        return duration

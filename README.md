@@ -106,6 +106,8 @@ Bus stop entries have their own options:
 - `binary_sensor.railboard_disruption_<station_code>` – on if any departure at the station is currently delayed or cancelled
 - `binary_sensor.railboard_leave_now_<station_code>` – on once the next catchable train is due within your configured walking time; use a state trigger on this entity for a "time to leave" automation
 - `sensor.railboard_bus_<stop_id>` – state is minutes until the next followed bus arrives; the `arrivals` attribute lists the next few buses (line, destination, minutes, platform/stop letter) across your followed routes
+
+Each departure now also includes `calling_at` (the names of the stops it calls at before its destination), `arrival_time` (expected arrival at the destination, HH:MM), and `duration_minutes` (journey time from departure to arrival), derived from RTT's per-service calling-point data.
 - `binary_sensor.railboard_bus_disruption_<stop_id>` – on if any followed route currently has a reported disruption (checked by TfL's line status, so it still catches a fully suspended route even when it has no arrivals showing)
 - `binary_sensor.railboard_bus_leave_now_<stop_id>` – on once the next bus is due within your configured walking time
 
