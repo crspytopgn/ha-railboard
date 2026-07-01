@@ -31,7 +31,11 @@
           "show_platforms": "Show platform numbers",
           "show_status": "Show ON TIME/DELAYED status",
           "show_calling_points": "Show calling points (via...)",
-          "show_operator_badge": "Show operator badges (SN, LO, etc.)"
+          "show_operator_badge": "Show operator badges (SN, LO, etc.)",
+          "show_next_train": "Show next train sensor",
+          "show_disruption_sensor": "Show disruption binary sensor",
+          "walking_time": "Walking time to station (minutes)",
+          "filter_destination": "Only show trains to this destination (optional)"
         }
       }
     }

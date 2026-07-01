@@ -30,6 +30,58 @@ class RealtimeTrainsClient:
         url = f"{self.BASE_URL}/search/{station_code}/arrivals"
         return self._get_services(url, station_code, num_results, "arrival")
 
+    def get_service_detail(self, service_uid: str, run_date: str = None):
+        """Get the full calling-point-by-calling-point detail for one specific service.
+
+        This is a separate, heavier request than get_departures/get_arrivals (RTT only
+        exposes per-stop realtime detail via this per-service endpoint), so callers
+        should use it on demand rather than for every row of a departure board.
+
+        run_date is an optional "YYYY-MM-DD" string; defaults to today.
+        """
+        if not run_date:
+            run_date = datetime.now().strftime("%Y-%m-%d")
+        year, month, day = run_date.split("-")
+
+        url = f"{self.BASE_URL}/service/{service_uid}/{year}/{month}/{day}"
+        _LOGGER.debug("Calling RTT API: %s", url)
+
+        try:
+            resp = requests.get(url, auth=self.auth, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+        except requests.exceptions.RequestException as err:
+            raise RailboardApiError(
+                f"Failed to fetch service detail for {service_uid}: {err}"
+            ) from err
+
+        calling_points = []
+        for location in data.get("locations", []):
+            calling_points.append(
+                {
+                    "name": location.get("description", "Unknown"),
+                    "crs": location.get("crs", ""),
+                    "platform": location.get("platform", "") or "TBC",
+                    "is_cancelled": location.get("isCancelled", False),
+                    "scheduled_arrival": self._format_time(location.get("gbttBookedArrival", "")),
+                    "expected_arrival": self._format_time(
+                        location.get("realtimeArrival") or location.get("gbttBookedArrival", "")
+                    ),
+                    "scheduled_departure": self._format_time(location.get("gbttBookedDeparture", "")),
+                    "expected_departure": self._format_time(
+                        location.get("realtimeDeparture") or location.get("gbttBookedDeparture", "")
+                    ),
+                }
+            )
+
+        return {
+            "service_uid": service_uid,
+            "run_date": run_date,
+            "operator": data.get("atocName", "Unknown"),
+            "is_cancelled": data.get("isCancelled", False),
+            "calling_points": calling_points,
+        }
+
     def _get_services(self, url: str, station_code: str, num_results: int, kind: str):
         """Fetch and parse a list of services (departures or arrivals)."""
         _LOGGER.debug("Calling RTT API: %s", url)
@@ -89,6 +141,9 @@ class RealtimeTrainsClient:
         operator = service.get("atocName", "Unknown")
         operator_code = service.get("atocCode", "")
 
+        cancel_reason = service.get("cancelReasonLongText") or service.get("cancelReasonShortText") or ""
+        delay_reason = service.get("delayReasonLongText") or service.get("delayReasonShortText") or ""
+
         result = {
             "network": self._classify_network(operator, operator_code),
             "scheduled": self._format_time(scheduled),
@@ -99,6 +154,8 @@ class RealtimeTrainsClient:
             "is_delayed": is_delayed,
             "delay_minutes": delay_minutes,
             "status": self._determine_status(is_cancelled, is_delayed, delay_minutes),
+            "cancel_reason": cancel_reason if is_cancelled else "",
+            "delay_reason": delay_reason if is_delayed else "",
         }
 
         if kind == "departure":

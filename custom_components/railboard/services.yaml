@@ -1,0 +1,30 @@
+get_service_detail:
+  name: Get service detail
+  description: >-
+    Fetch the full calling-point-by-calling-point detail (with live times and
+    platforms) for one specific train service. Use the service_uid from a
+    departure/arrival/next-train sensor's attributes.
+  fields:
+    service_uid:
+      name: Service UID
+      description: The RTT service UID, e.g. from a sensor's "service_uid" attribute.
+      required: true
+      example: "P12345"
+      selector:
+        text:
+    config_entry_id:
+      name: Station
+      description: >-
+        Which configured Railboard station's credentials to use. Only needed
+        if you have more than one Railboard station configured.
+      required: false
+      selector:
+        config_entry:
+          integration: railboard
+    date:
+      name: Date
+      description: The service's running date (YYYY-MM-DD). Defaults to today.
+      required: false
+      example: "2026-07-01"
+      selector:
+        text:

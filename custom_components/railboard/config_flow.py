@@ -7,7 +7,17 @@ from homeassistant import config_entries
 from homeassistant.core import callback
 import homeassistant.helpers.config_validation as cv
 
-from .const import DOMAIN
+from .const import (
+    CONF_FILTER_DESTINATION,
+    CONF_SHOW_DISRUPTION_SENSOR,
+    CONF_SHOW_NEXT_TRAIN,
+    CONF_WALKING_TIME,
+    DEFAULT_FILTER_DESTINATION,
+    DEFAULT_SHOW_DISRUPTION_SENSOR,
+    DEFAULT_SHOW_NEXT_TRAIN,
+    DEFAULT_WALKING_TIME,
+    DOMAIN,
+)
 from .api import RealtimeTrainsClient
 
 _LOGGER = logging.getLogger(__name__)
@@ -116,5 +126,23 @@ class RailboardOptionsFlowHandler(config_entries.OptionsFlow):
                     "show_operator_badge",
                     default=self.config_entry.options.get("show_operator_badge", True)
                 ): bool,
+                vol.Optional(
+                    CONF_SHOW_NEXT_TRAIN,
+                    default=self.config_entry.options.get(CONF_SHOW_NEXT_TRAIN, DEFAULT_SHOW_NEXT_TRAIN)
+                ): bool,
+                vol.Optional(
+                    CONF_SHOW_DISRUPTION_SENSOR,
+                    default=self.config_entry.options.get(
+                        CONF_SHOW_DISRUPTION_SENSOR, DEFAULT_SHOW_DISRUPTION_SENSOR
+                    )
+                ): bool,
+                vol.Optional(
+                    CONF_WALKING_TIME,
+                    default=self.config_entry.options.get(CONF_WALKING_TIME, DEFAULT_WALKING_TIME)
+                ): vol.All(int, vol.Range(min=0, max=60)),
+                vol.Optional(
+                    CONF_FILTER_DESTINATION,
+                    default=self.config_entry.options.get(CONF_FILTER_DESTINATION, DEFAULT_FILTER_DESTINATION)
+                ): str,
             })
         )

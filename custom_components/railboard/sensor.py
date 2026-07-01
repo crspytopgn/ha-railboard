@@ -9,6 +9,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import (
     CONF_SHOW_ARRIVALS,
     CONF_SHOW_CALLING_POINTS,
+    CONF_SHOW_NEXT_TRAIN,
     CONF_SHOW_OPERATOR_BADGE,
     CONF_SHOW_PLATFORMS,
     CONF_SHOW_STATUS,
@@ -16,6 +17,7 @@ from .const import (
     CONF_STATION_NAME,
     DEFAULT_SHOW_ARRIVALS,
     DEFAULT_SHOW_CALLING_POINTS,
+    DEFAULT_SHOW_NEXT_TRAIN,
     DEFAULT_SHOW_OPERATOR_BADGE,
     DEFAULT_SHOW_PLATFORMS,
     DEFAULT_SHOW_STATUS,
@@ -33,7 +35,7 @@ async def async_setup_entry(
     """Set up Railboard sensor based on a config entry."""
     _LOGGER.info("Setting up Railboard sensors from config entry")
 
-    coordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
 
     station_code = entry.data[CONF_STATION_CODE]
     station_name = entry.data.get(CONF_STATION_NAME, station_code)
@@ -41,6 +43,7 @@ async def async_setup_entry(
     # Get options with defaults
     options = entry.options
     show_arrivals = options.get(CONF_SHOW_ARRIVALS, DEFAULT_SHOW_ARRIVALS)
+    show_next_train = options.get(CONF_SHOW_NEXT_TRAIN, DEFAULT_SHOW_NEXT_TRAIN)
     show_platforms = options.get(CONF_SHOW_PLATFORMS, DEFAULT_SHOW_PLATFORMS)
     show_status = options.get(CONF_SHOW_STATUS, DEFAULT_SHOW_STATUS)
     show_calling_points = options.get(CONF_SHOW_CALLING_POINTS, DEFAULT_SHOW_CALLING_POINTS)
@@ -61,6 +64,9 @@ async def async_setup_entry(
 
     if show_arrivals:
         sensors.append(RailboardArrivalsSensor(coordinator, station_code, station_name))
+
+    if show_next_train:
+        sensors.append(RailboardNextTrainSensor(coordinator, station_code, station_name))
 
     async_add_entities(sensors)
     _LOGGER.info(f"Railboard sensors added for {station_name} ({station_code})")
@@ -170,3 +176,44 @@ class RailboardArrivalsSensor(CoordinatorEntity):
     @property
     def _arrivals(self):
         return (self.coordinator.data or {}).get("arrivals", [])
+
+
+class RailboardNextTrainSensor(CoordinatorEntity):
+    """Sensor for the next catchable departure (respects walking time / destination filter)."""
+
+    _attr_icon = "mdi:train-clock"
+    _attr_unit_of_measurement = "min"
+    _attr_should_poll = False
+
+    def __init__(self, coordinator, station_code, station_name):
+        """Initialise the sensor."""
+        super().__init__(coordinator)
+        self._station_code = station_code
+        self._station_name = station_name
+
+        self._attr_name = f"Railboard Next Train {station_name}"
+        self._attr_unique_id = f"railboard_next_train_{station_code.lower()}"
+
+    @property
+    def _next_train(self):
+        return (self.coordinator.data or {}).get("next_train")
+
+    @property
+    def state(self):
+        """Return the number of minutes until the next catchable train departs."""
+        next_train = self._next_train
+        if next_train is None:
+            return None
+        return next_train.get("minutes_until_departure")
+
+    @property
+    def extra_state_attributes(self):
+        """Return the state attributes."""
+        attrs = {
+            "station_code": self._station_code,
+            "station_name": self._station_name,
+        }
+        next_train = self._next_train
+        if next_train is not None:
+            attrs.update(next_train)
+        return attrs
