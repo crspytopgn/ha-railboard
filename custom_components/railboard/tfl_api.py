@@ -45,14 +45,43 @@ class TflBusClient:
         ]
 
     def get_stop_routes(self, stop_id: str) -> list:
-        """Return the sorted list of distinct bus route names serving a stop."""
+        """Return the sorted list of distinct bus route names serving a stop.
+
+        TfL's /StopPoint/{id} always returns an array (StopPointArray), even
+        for a single id - not a bare object. The previous version of this
+        method assumed a bare object and would raise AttributeError here.
+        """
         data = self._get(f"/StopPoint/{stop_id}")
-        routes = {line.get("name") for line in data.get("lines", []) if line.get("name")}
+        stops = data if isinstance(data, list) else [data]
+
+        routes = set()
+        for stop in stops:
+            for line in (stop or {}).get("lines", []) or []:
+                name = line.get("name")
+                if name:
+                    routes.add(name)
+
         return sorted(routes)
 
     def get_arrivals(self, stop_id: str, routes: list = None, num_results: int = 5) -> list:
         """Get the next bus arrivals at a stop, optionally filtered to specific routes."""
         predictions = self._get(f"/StopPoint/{stop_id}/Arrivals")
+        if not isinstance(predictions, list):
+            _LOGGER.warning("Unexpected /Arrivals response shape for %s: %r", stop_id, type(predictions))
+            predictions = []
+
+        # Temporary debug aid: confirm whether TfL is genuinely returning zero
+        # predictions (e.g. rate-limited without an app_key, wrong stop_id) versus
+        # this client failing to parse a non-empty response. Enable with:
+        #   logger:
+        #     logs:
+        #       custom_components.railboard: debug
+        _LOGGER.debug(
+            "Raw /Arrivals for %s: %d prediction(s)%s",
+            stop_id,
+            len(predictions),
+            f", sample: {predictions[0]}" if predictions else "",
+        )
 
         routes_filter = {route.strip().lower() for route in routes} if routes else None
 
@@ -98,6 +127,9 @@ class TflBusClient:
             return []
 
         data = self._get(f"/Line/{ids}/Status")
+        if not isinstance(data, list):
+            _LOGGER.warning("Unexpected /Line/Status response shape for %s: %r", ids, type(data))
+            data = []
 
         disruptions = []
         for line in data:
