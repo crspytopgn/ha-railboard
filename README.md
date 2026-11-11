@@ -151,6 +151,6 @@ The response includes the operator, cancellation status, a `calling_points` list
 
 ## Support the project
 
-Railboard is free and open source. If it's useful to you, you can [sponsor me on GitHub](https://github.com/sponsors/crspytopgn) or [buy me a coffee](https://buymeacoffee.com/crspytopgn). It helps pay for the tools these projects are built with.
+Railboard is free and open source. If it's useful to you, you can [sponsor me on GitHub](https://github.com/sponsors/crspytopgn). It helps pay for the tools these projects are built with.
 
 More from me: [OpenMCM2](https://github.com/crspytopgn/openmcm2) · [OpenSGolf](https://github.com/crspytopgn/opensgolf) · [OpenLinks2003](https://github.com/crspytopgn/openlinks2003) · [Pitwall](https://github.com/crspytopgn/pitwall).
