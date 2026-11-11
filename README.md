@@ -148,3 +148,9 @@ data:
 ```
 
 The response includes the operator, cancellation status, a `calling_points` list with each stop's name, CRS code, platform, and scheduled/expected arrival and departure times, and (where RTT has the data) a `formation` object with `leading_class`, `passenger_vehicles`, per-unit `units` (identity/stock type/vehicle count), `facilities` (e.g. wifi, toilet, first), and `has_first_class`. `formation` is `null` when RTT doesn't have allocation data for that service.
+
+## Support the project
+
+Railboard is free and open source. If it's useful to you, you can [sponsor me on GitHub](https://github.com/sponsors/crspytopgn) or [buy me a coffee](https://buymeacoffee.com/crspytopgn). It helps pay for the tools these projects are built with.
+
+More from me: [OpenMCM2](https://github.com/crspytopgn/openmcm2) · [OpenSGolf](https://github.com/crspytopgn/opensgolf) · [OpenLinks2003](https://github.com/crspytopgn/openlinks2003) · [Pitwall](https://github.com/crspytopgn/pitwall).
